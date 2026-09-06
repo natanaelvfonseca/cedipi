@@ -5,11 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:server": "node --watch --env-file-if-exists=.env server/index.js",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "preview": "vite preview --host 0.0.0.0",
+    "db:bootstrap": "node --env-file-if-exists=.env scripts/bootstrap-database.js",
+    "db:migrate": "node --env-file-if-exists=.env scripts/run-migrations.js",
+    "test": "node --test"
   },
   "dependencies": {
+    "express": "^5.2.1",
     "lucide-react": "^1.35.0",
+    "pg": "^8.23.0",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

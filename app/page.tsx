@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound, Clock3,
-  FileText, Menu, MessageCircle, Plus, Settings, Sparkles, Stethoscope,
+  AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound, Clock3,
+  FileText, Menu, MessageCircle, Plus, RefreshCw, Settings, Sparkles, Stethoscope,
   UserRound, UsersRound, X, XCircle,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type DoctorId = "danilo" | "wagner" | "deison";
 type Status = "Confirmado" | "Aguardando confirmação" | "Cancelado";
@@ -111,6 +111,120 @@ function StatusBadge({ status }: { status: Status }) {
   return <span className={`status-badge status-${className}`}>{status}</span>;
 }
 
+type WhatsAppStatus = "connected" | "disconnected" | "connecting" | "unknown";
+type WhatsAppInstance = {
+  name: string;
+  status: WhatsAppStatus;
+  connected: boolean;
+  phoneNumber?: string | null;
+  profileName?: string | null;
+  lastCheckedAt?: string;
+};
+
+const unknownWhatsApp: WhatsAppInstance = {
+  name: "Cedipi",
+  status: "unknown",
+  connected: false,
+};
+
+function WhatsAppConnection() {
+  const [instance, setInstance] = useState<WhatsAppInstance>(unknownWhatsApp);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+
+  const refreshStatus = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await fetch("/api/whatsapp/instance", { signal });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error("Status indisponível");
+      setInstance(payload.instance);
+      if (payload.instance.connected) setQrCode(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setInstance(unknownWhatsApp);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshStatus(controller.signal);
+    const interval = window.setInterval(() => void refreshStatus(controller.signal), 15_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    if (!qrCode) return;
+    const controller = new AbortController();
+    const interval = window.setInterval(() => void refreshStatus(controller.signal), 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [qrCode, refreshStatus]);
+
+  async function connect() {
+    setConnecting(true);
+    try {
+      const response = await fetch("/api/whatsapp/instance/connect", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error("Conexão indisponível");
+      if (payload.connected) {
+        setQrCode(null);
+        await refreshStatus();
+      } else if (payload.qrCode) {
+        setQrCode(payload.qrCode);
+        setInstance((current) => ({ ...current, status: "connecting" }));
+      }
+    } catch {
+      setInstance(unknownWhatsApp);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  const labels: Record<WhatsAppStatus, string> = {
+    connected: "WhatsApp conectado",
+    disconnected: "WhatsApp desconectado",
+    connecting: "Conectando...",
+    unknown: "Não foi possível verificar a conexão",
+  };
+
+  return (
+    <>
+      <div className="whatsapp-control">
+        <div className={`whatsapp-state whatsapp-${instance.status}`}>
+          {instance.status === "unknown" ? <AlertTriangle size={13} /> : <i />}
+          <span><strong>{loading ? "Verificando WhatsApp..." : labels[instance.status]}</strong><small>{instance.profileName || instance.name}{instance.phoneNumber ? ` · ${instance.phoneNumber}` : ""}</small></span>
+        </div>
+        {instance.status === "disconnected" ? (
+          <button className="whatsapp-action" onClick={connect} disabled={connecting}>{connecting ? "Gerando QR..." : "Conectar WhatsApp"}</button>
+        ) : (
+          <button className="whatsapp-refresh" onClick={() => void refreshStatus()} disabled={loading} aria-label="Atualizar estado do WhatsApp"><RefreshCw size={13} /></button>
+        )}
+      </div>
+      {qrCode && (
+        <div className="modal-layer modal-top" role="dialog" aria-modal="true" aria-labelledby="whatsapp-connect-title">
+          <button className="modal-backdrop" onClick={() => setQrCode(null)} aria-label="Fechar QR Code" />
+          <div className="modal-card whatsapp-modal">
+            <div className="modal-header"><div className="modal-title-icon"><MessageCircle size={20} /></div><div><h2 id="whatsapp-connect-title">Conectar WhatsApp</h2><p>Instância {instance.name}</p></div><button className="icon-button" onClick={() => setQrCode(null)} aria-label="Fechar"><X size={20} /></button></div>
+            <div className="whatsapp-qr-content">
+              <img src={qrCode} alt="QR Code para conectar a instância Cedipi ao WhatsApp" />
+              <p>Escaneie este QR Code no WhatsApp em:<br /><strong>Configurações → Aparelhos conectados → Conectar aparelho.</strong></p>
+              <span><i /> Aguardando leitura do QR Code</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function Home() {
   const [selectedDoctorId, setSelectedDoctorId] = useState<DoctorId>("danilo");
   const [selectedDate, setSelectedDate] = useState(new Date(2026, 7, 31, 12));
@@ -206,7 +320,7 @@ export default function Home() {
         <section className="lara-banner">
           <div className="lara-banner-icon"><Sparkles size={18} /></div>
           <div><strong>Lara IA <span>Atendimento automático ativo</span></strong><p>Agendamentos realizados pela Lara aparecem automaticamente na agenda.</p></div>
-          <span className="live-pill"><i /> Conectada</span>
+          <WhatsAppConnection />
         </section>
 
         <section className="summary-row" aria-label="Resumo da agenda">

@@ -66,6 +66,26 @@ button { color: inherit; }
 .lara-banner strong { font-size: 11px; }.lara-banner strong span { margin-left: 7px; padding-left: 8px; border-left: 1px solid #c3dcdf; color: #3f756f; font-weight: 650; }
 .lara-banner p { margin: 0; font-size: 10px; color: var(--muted); }
 .live-pill { margin-left: auto; display: flex; align-items: center; gap: 7px; border: 1px solid #cce5dc; background: #fff; color: #397967; font-size: 10px; font-weight: 750; border-radius: 99px; padding: 6px 10px; }
+.whatsapp-control { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.whatsapp-state { display: flex; align-items: center; gap: 7px; color: #617783; }
+.whatsapp-state > span { display: grid; gap: 2px; }
+.whatsapp-state strong { font-size: 10px; }
+.whatsapp-state small { color: var(--muted); font-size: 8px; }
+.whatsapp-state i { width: 7px; height: 7px; border-radius: 50%; background: #91a0a8; box-shadow: 0 0 0 3px rgba(108,127,141,.11); }
+.whatsapp-connected { color: #397967; }.whatsapp-connected i { background: #36ad74; box-shadow: 0 0 0 3px rgba(54,173,116,.12); }
+.whatsapp-disconnected { color: #637680; }.whatsapp-disconnected i { background: #98a6ad; }
+.whatsapp-connecting { color: var(--amber); }.whatsapp-connecting i { background: #d49734; animation: whatsapp-pulse 1.2s ease-in-out infinite; }
+.whatsapp-unknown { color: var(--amber); }
+.whatsapp-action, .whatsapp-refresh { border: 1px solid #c7dfe2; background: #fff; color: var(--petrol); cursor: pointer; font-weight: 750; }
+.whatsapp-action { min-height: 30px; border-radius: 8px; padding: 0 10px; font-size: 9px; }
+.whatsapp-refresh { width: 29px; height: 29px; border-radius: 8px; display: grid; place-items: center; }
+.whatsapp-action:hover, .whatsapp-refresh:hover { background: #f6fbfb; }.whatsapp-action:disabled, .whatsapp-refresh:disabled { cursor: wait; opacity: .6; }
+@keyframes whatsapp-pulse { 50% { opacity: .4; } }
+.whatsapp-modal { width: min(410px,96vw); }
+.whatsapp-qr-content { display: grid; justify-items: center; gap: 16px; padding: 24px; text-align: center; }
+.whatsapp-qr-content img { width: min(260px,75vw); height: auto; border: 1px solid var(--line); border-radius: 11px; padding: 8px; background: #fff; }
+.whatsapp-qr-content p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }.whatsapp-qr-content p strong { color: var(--ink); }
+.whatsapp-qr-content > span { display: flex; align-items: center; gap: 7px; color: var(--amber); font-size: 9px; font-weight: 750; }.whatsapp-qr-content > span i { width: 7px; height: 7px; border-radius: 50%; background: #d49734; animation: whatsapp-pulse 1.2s ease-in-out infinite; }
 
 .summary-row { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; margin-bottom: 13px; }
 .summary-card { min-height: 57px; background: #fff; border: 1px solid var(--line-soft); border-radius: 11px; padding: 10px 13px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 3px 12px rgba(25,61,75,.025); }
@@ -141,6 +161,6 @@ button { color: inherit; }
   .sidebar { transform: translateX(-100%); transition: transform .2s ease; width: 224px; box-shadow: 12px 0 40px rgba(20,48,61,.15); }.sidebar.sidebar-open { transform: translateX(0); }.sidebar-close, .mobile-menu { display: grid; }.sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 25; border: 0; background: rgba(10,31,41,.3); }.main-content { margin-left: 0; width: 100%; padding: 19px 16px 35px; }.summary-row { grid-template-columns: 1fr 1fr; }.time-grid { height: 620px; }
 }
 @media (max-width:620px) {
-  .topbar { align-items: flex-start; }.title-wrap p { display: none; }.header-actions .button-secondary { display: none; }.doctor-selector { display: flex; overflow-x: auto; padding-bottom: 3px; }.doctor-tab { min-width: 175px; }.lara-banner p, .live-pill { display: none; }.summary-card { display: grid; gap: 5px; }.calendar-toolbar { align-items: flex-start; gap: 10px; flex-direction: column; }.date-navigation { width: 100%; }.date-title { min-width: 0; flex: 1; }.today-link { display: none; }.view-toggle { width: 100%; }.view-toggle button { flex: 1; }.agenda-head { grid-template-columns: 62px minmax(180px,1fr); }.agenda-head > span:last-child { display: none; }.time-row { grid-template-columns: 62px minmax(0,1fr); }.time-line { left: 62px; }.time-row > time { padding-right: 9px; }.appointment-card { grid-template-columns: minmax(0,1fr); padding-right: 30px; }.appointment-card .origin-badge, .appointment-card .status-badge { display: none; }.form-grid { grid-template-columns: 1fr 1fr; }.span-1, .span-2 { grid-column: span 1; }.span-4 { grid-column: span 2; }.field:first-child, .field:nth-child(2) { grid-column: span 2; }.modal-actions { flex-direction: column-reverse; }.modal-actions .button { width: 100%; }.detail-grid { grid-template-columns: 1fr; }.toast { left: 16px; right: 16px; bottom: 16px; }
+  .topbar { align-items: flex-start; }.title-wrap p { display: none; }.header-actions .button-secondary { display: none; }.doctor-selector { display: flex; overflow-x: auto; padding-bottom: 3px; }.doctor-tab { min-width: 175px; }.lara-banner p, .live-pill, .whatsapp-state small { display: none; }.lara-banner > div:nth-child(2) { display: none; }.whatsapp-control { margin-left: 0; flex: 1; justify-content: space-between; }.summary-card { display: grid; gap: 5px; }.calendar-toolbar { align-items: flex-start; gap: 10px; flex-direction: column; }.date-navigation { width: 100%; }.date-title { min-width: 0; flex: 1; }.today-link { display: none; }.view-toggle { width: 100%; }.view-toggle button { flex: 1; }.agenda-head { grid-template-columns: 62px minmax(180px,1fr); }.agenda-head > span:last-child { display: none; }.time-row { grid-template-columns: 62px minmax(0,1fr); }.time-line { left: 62px; }.time-row > time { padding-right: 9px; }.appointment-card { grid-template-columns: minmax(0,1fr); padding-right: 30px; }.appointment-card .origin-badge, .appointment-card .status-badge { display: none; }.form-grid { grid-template-columns: 1fr 1fr; }.span-1, .span-2 { grid-column: span 1; }.span-4 { grid-column: span 2; }.field:first-child, .field:nth-child(2) { grid-column: span 2; }.modal-actions { flex-direction: column-reverse; }.modal-actions .button { width: 100%; }.detail-grid { grid-template-columns: 1fr; }.toast { left: 16px; right: 16px; bottom: 16px; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
