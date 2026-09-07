@@ -5,6 +5,7 @@ export type WhatsAppInstance = {
   status: WhatsAppStatus;
   connected: boolean;
   phoneNumber: string | null;
+  profileName: string | null;
 };
 
 export class WhatsAppInstanceApiError extends Error {
@@ -14,15 +15,16 @@ export class WhatsAppInstanceApiError extends Error {
   }
 }
 
-const whatsappStatuses: WhatsAppStatus[] = ["connected", "disconnected", "connecting", "unknown"];
+const whatsappStatuses: WhatsAppStatus[] = ["connected", "disconnected", "connecting", "qr_required", "unknown"];
 
-export async function getWhatsAppInstance(
-  signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
-): Promise<WhatsAppInstance> {
+async function requestJson(
+  url: string,
+  options: RequestInit,
+  fetchImpl: typeof fetch,
+) {
   let response: Response;
   try {
-    response = await fetchImpl("/api/whatsapp/instance", { signal });
+    response = await fetchImpl(url, options);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new WhatsAppInstanceApiError();
@@ -34,8 +36,18 @@ export async function getWhatsAppInstance(
   } catch {
     throw new WhatsAppInstanceApiError();
   }
+  if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true) {
+    throw new WhatsAppInstanceApiError();
+  }
+  return payload as Record<string, unknown>;
+}
 
-  if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true || !("instance" in payload) || !payload.instance || typeof payload.instance !== "object") {
+export async function getWhatsAppInstance(
+  signal?: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<WhatsAppInstance> {
+  const payload = await requestJson("/api/whatsapp/instance", { signal }, fetchImpl);
+  if (!("instance" in payload) || !payload.instance || typeof payload.instance !== "object") {
     throw new WhatsAppInstanceApiError();
   }
 
@@ -50,7 +62,25 @@ export async function getWhatsAppInstance(
     status: instance.status as WhatsAppStatus,
     connected: instance.connected === true,
     phoneNumber: typeof instance.phoneNumber === "string" && instance.phoneNumber.trim() ? instance.phoneNumber.trim() : null,
+    profileName: typeof instance.profileName === "string" && instance.profileName.trim() ? instance.profileName.trim() : null,
   };
+}
+
+export async function connectWhatsAppInstance(fetchImpl: typeof fetch = fetch) {
+  const payload = await requestJson("/api/whatsapp/instance/connect", { method: "POST" }, fetchImpl);
+  if (payload.status === "connected" && payload.connected === true && payload.qrCode === null) {
+    return { status: "connected" as const, connected: true as const, qrCode: null };
+  }
+  if (payload.status === "qr_required" && payload.connected === false && typeof payload.qrCode === "string" && payload.qrCode.startsWith("data:image/")) {
+    return { status: "qr_required" as const, connected: false as const, qrCode: payload.qrCode };
+  }
+  throw new WhatsAppInstanceApiError();
+}
+
+export async function disconnectWhatsAppInstance(fetchImpl: typeof fetch = fetch) {
+  const payload = await requestJson("/api/whatsapp/instance/disconnect", { method: "POST" }, fetchImpl);
+  if (payload.status !== "disconnected") throw new WhatsAppInstanceApiError();
+  return { status: "disconnected" as const };
 }
 
 export function formatWhatsAppPhone(phoneNumber: string | null) {

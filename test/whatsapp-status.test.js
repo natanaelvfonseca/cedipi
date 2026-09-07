@@ -23,3 +23,7 @@ test("estado unknown oferece nova tentativa sem parecer desconectado", () => {
 test("estado connecting comunica conexão em andamento", () => {
   assert.equal(getWhatsAppPresentation("connecting").label, "Conectando WhatsApp...");
 });
+
+test("estado qr_required comunica espera pelo QR", () => {
+  assert.equal(getWhatsAppPresentation("qr_required").label, "Aguardando leitura do QR Code");
+});

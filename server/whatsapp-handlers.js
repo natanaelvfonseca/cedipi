@@ -1,5 +1,6 @@
 import {
   connectWhatsAppInstance,
+  disconnectWhatsAppInstance,
   publicInstance,
   syncWhatsAppInstance,
 } from "./whatsapp-service.js";
@@ -34,6 +35,18 @@ export function createConnectWhatsAppHandler(connect = connectWhatsAppInstance) 
       response.status(200).json({ ok: true, ...result });
     } catch (error) {
       console.error("Falha ao solicitar conexão WhatsApp:", error);
+      unavailableResponse(response);
+    }
+  };
+}
+
+export function createDisconnectWhatsAppHandler(disconnect = disconnectWhatsAppInstance) {
+  return async function disconnectWhatsAppHandler(_request, response) {
+    try {
+      const result = await disconnect();
+      response.status(200).json({ ok: true, ...result });
+    } catch (error) {
+      console.error("Falha ao desconectar WhatsApp:", error);
       unavailableResponse(response);
     }
   };

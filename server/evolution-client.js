@@ -53,6 +53,13 @@ export function createEvolutionClient({
 
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
 
+  function requireCedipiInstance(routeInstanceName) {
+    if (routeInstanceName !== cedipiInstanceName) {
+      throw new EvolutionApiError("A instância Evolution solicitada é inválida.", 400);
+    }
+    return encodeURIComponent(routeInstanceName);
+  }
+
   async function request(path, { method = "GET", payload } = {}) {
     let response;
     try {
@@ -97,11 +104,17 @@ export function createEvolutionClient({
   }
 
   async function getConnectionState(routeInstanceName = instanceName) {
-    return request(`/instance/connectionState/${encodeURIComponent(routeInstanceName)}`);
+    return request(`/instance/connectionState/${requireCedipiInstance(routeInstanceName)}`);
   }
 
   async function getQrCode(routeInstanceName = instanceName) {
-    return request(`/instance/connect/${encodeURIComponent(routeInstanceName)}`);
+    return request(`/instance/connect/${requireCedipiInstance(routeInstanceName)}`);
+  }
+
+  async function logoutInstance(routeInstanceName = instanceName) {
+    return request(`/instance/logout/${requireCedipiInstance(routeInstanceName)}`, {
+      method: "DELETE",
+    });
   }
 
   async function findChats() {
@@ -133,6 +146,7 @@ export function createEvolutionClient({
     getInstance,
     getConnectionState,
     getQrCode,
+    logoutInstance,
     findChats,
     findMessages,
     sendText,

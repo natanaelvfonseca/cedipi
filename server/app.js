@@ -4,6 +4,7 @@ import express from "express";
 import { createDatabaseHealthHandler } from "./database-health.js";
 import {
   createConnectWhatsAppHandler,
+  createDisconnectWhatsAppHandler,
   createGetWhatsAppInstanceHandler,
 } from "./whatsapp-handlers.js";
 import {
@@ -36,6 +37,7 @@ export function createApp() {
   app.get("/api/health/database", createDatabaseHealthHandler());
   app.get("/api/whatsapp/instance", createGetWhatsAppInstanceHandler());
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
+  app.post("/api/whatsapp/instance/disconnect", createDisconnectWhatsAppHandler());
   app.get("/api/whatsapp/conversations", createListWhatsAppConversationsHandler());
   app.get("/api/whatsapp/conversations/:conversationId/messages", createListWhatsAppMessagesHandler());
   app.post("/api/whatsapp/conversations/:conversationId/messages", createSendWhatsAppMessageHandler());

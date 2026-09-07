@@ -1,4 +1,4 @@
-export type WhatsAppStatus = "connected" | "disconnected" | "connecting" | "unknown";
+export type WhatsAppStatus = "connected" | "disconnected" | "connecting" | "qr_required" | "unknown";
 
 type WhatsAppAction = "connect" | "retry" | "refresh";
 
@@ -21,6 +21,11 @@ const presentations: Record<WhatsAppStatus, WhatsAppPresentation> = {
   },
   connecting: {
     label: "Conectando WhatsApp...",
+    action: "refresh",
+    actionLabel: "Atualizar estado do WhatsApp",
+  },
+  qr_required: {
+    label: "Aguardando leitura do QR Code",
     action: "refresh",
     actionLabel: "Atualizar estado do WhatsApp",
   },

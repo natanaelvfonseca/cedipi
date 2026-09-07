@@ -52,7 +52,7 @@ export async function connectWhatsAppInstance({
 } = {}) {
   const instance = await syncWhatsAppInstance({ client, save, now });
   if (instance.connected) {
-    return { connected: true, qrCode: null };
+    return { status: "connected", connected: true, qrCode: null };
   }
   if (instance.status === "unknown") {
     throw new Error("Não foi possível determinar o estado da instância.");
@@ -61,11 +61,47 @@ export async function connectWhatsAppInstance({
   const payload = await client.getQrCode(instance.name);
   const qrCode = extractQrCode(payload);
   if (!qrCode) {
+    const confirmed = await syncWhatsAppInstance({ client, save, now });
+    if (confirmed.connected) {
+      return { status: "connected", connected: true, qrCode: null };
+    }
     throw new Error("Evolution API não retornou um QR Code.");
   }
 
   await save({ ...instance, status: "connecting", connected: false, lastCheckedAt: now().toISOString() });
-  return { connected: false, qrCode };
+  return { status: "qr_required", connected: false, qrCode };
+}
+
+export async function disconnectWhatsAppInstance({
+  client = createEvolutionClient(),
+  save = saveWhatsAppInstance,
+  now = () => new Date(),
+} = {}) {
+  const instance = await syncWhatsAppInstance({ client, save, now });
+  if (instance.status === "unknown") {
+    throw new Error("Não foi possível determinar o estado da instância.");
+  }
+  if (instance.status === "disconnected") {
+    return { status: "disconnected" };
+  }
+
+  let logoutError;
+  try {
+    await client.logoutInstance(instance.name);
+  } catch (error) {
+    logoutError = error;
+  }
+
+  try {
+    const confirmed = await syncWhatsAppInstance({ client, save, now });
+    if (confirmed.status === "disconnected") {
+      return { status: "disconnected" };
+    }
+  } catch (confirmationError) {
+    if (!logoutError) logoutError = confirmationError;
+  }
+
+  throw logoutError ?? new Error("A Evolution não confirmou a desconexão da instância.");
 }
 
 export function publicInstance(instance) {

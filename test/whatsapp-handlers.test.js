@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createConnectWhatsAppHandler,
+  createDisconnectWhatsAppHandler,
   createGetWhatsAppInstanceHandler,
 } from "../server/whatsapp-handlers.js";
 
@@ -66,6 +67,7 @@ test("falha externa vira unknown sem detalhes internos", async () => {
 test("endpoint de conexão entrega QR normalizado", async () => {
   const response = responseRecorder();
   const handler = createConnectWhatsAppHandler(async () => ({
+    status: "qr_required",
     connected: false,
     qrCode: "data:image/png;base64,YWJj",
   }));
@@ -75,7 +77,28 @@ test("endpoint de conexão entrega QR normalizado", async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.body, {
     ok: true,
+    status: "qr_required",
     connected: false,
     qrCode: "data:image/png;base64,YWJj",
   });
+});
+
+test("endpoint de desconexão devolve apenas estado confirmado", async () => {
+  const response = responseRecorder();
+  await createDisconnectWhatsAppHandler(async () => ({ status: "disconnected" }))({}, response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, { ok: true, status: "disconnected" });
+});
+
+test("falha no logout não expõe detalhes da Evolution", async () => {
+  const response = responseRecorder();
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    await createDisconnectWhatsAppHandler(async () => { throw new Error("server-secret QR interno"); })({}, response);
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.equal(response.statusCode, 502);
+  assert.equal(JSON.stringify(response.body).includes("server-secret"), false);
 });

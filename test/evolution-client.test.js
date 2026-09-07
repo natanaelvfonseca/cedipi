@@ -61,3 +61,34 @@ test("não usa cedipi minúsculo como fallback", async () => {
 
   await assert.rejects(client.getInstance(), /Instância Cedipi não encontrada/);
 });
+
+test("logout usa DELETE /instance/logout/Cedipi e nunca delete da instância", async () => {
+  const requests = [];
+  const client = createEvolutionClient({
+    baseUrl: "https://evolution.example",
+    apiKey: "server-secret",
+    instanceName: "Cedipi",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, method: options.method, apikey: options.headers.apikey });
+      return Response.json({ status: "SUCCESS" });
+    },
+  });
+
+  await client.logoutInstance();
+  assert.deepEqual(requests, [{
+    url: "https://evolution.example/instance/logout/Cedipi",
+    method: "DELETE",
+    apikey: "server-secret",
+  }]);
+  assert.equal(requests[0].url.includes("/instance/delete/"), false);
+});
+
+test("operações de instância rejeitam qualquer nome diferente de Cedipi", async () => {
+  const client = createEvolutionClient({
+    baseUrl: "https://evolution.example",
+    apiKey: "server-secret",
+    instanceName: "Cedipi",
+    fetchImpl: async () => { throw new Error("não deveria chamar"); },
+  });
+  await assert.rejects(client.logoutInstance("cedipi"), /instância Evolution solicitada é inválida/);
+});
