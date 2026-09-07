@@ -39,6 +39,16 @@ Depois de configurar `DATABASE_URL` apontando para `cedipi_core`, valide pela AP
 curl http://localhost:3000/api/health/database
 ```
 
+### Controle global da Lara no n8n
+
+O painel usa `GET/PATCH /api/ai-control` com a sessão HttpOnly. Integrações server-to-server
+consultam somente `GET /api/internal/ai-control`, enviando o segredo configurado em
+`N8N_INTERNAL_API_SECRET` no header `x-cedipi-internal-secret`.
+
+O gate do n8n deve continuar apenas quando `globalEnabled === true`. HTTP não-2xx, timeout
+ou resposta sem boolean representam falha de integração e não devem ser tratados como pausa
+solicitada pelo usuário.
+
 ## Build de produção
 
 ```bash
@@ -54,4 +64,4 @@ docker build -t cedipi-agenda .
 docker run --rm --env-file .env -p 3000:3000 cedipi-agenda
 ```
 
-No EasyPanel, configure `DATABASE_URL`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME` e `EVOLUTION_INSTANCE_ID`, e exponha a porta `3000` da aplicação. Use o hostname interno do serviço PostgreSQL. `POSTGRES_ADMIN_URL` só é necessária durante o bootstrap e pode ser removida do serviço após a criação do banco.
+No EasyPanel, configure `DATABASE_URL`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME`, `EVOLUTION_INSTANCE_ID` e `N8N_INTERNAL_API_SECRET`, e exponha a porta `3000` da aplicação. Use o hostname interno do serviço PostgreSQL. `POSTGRES_ADMIN_URL` só é necessária durante o bootstrap e pode ser removida do serviço após a criação do banco.

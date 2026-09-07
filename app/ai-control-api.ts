@@ -45,7 +45,7 @@ export function getAiControl(
   signal?: AbortSignal,
   fetchImpl: typeof fetch = apiFetch,
 ) {
-  return requestAiControl({ method: "GET", signal }, fetchImpl);
+  return requestAiControl({ method: "GET", credentials: "same-origin", signal }, fetchImpl);
 }
 
 export function patchAiControl(
@@ -54,6 +54,7 @@ export function patchAiControl(
 ) {
   return requestAiControl({
     method: "PATCH",
+    credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ enabled }),
   }, fetchImpl);

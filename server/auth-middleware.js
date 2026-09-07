@@ -48,7 +48,9 @@ export function verifySameOrigin(request, response, next) {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return next();
   const origin = request.get("origin");
   if (!origin) return next();
-  const expected = `${request.protocol}://${request.get("host")}`;
+  const forwardedProtocol = request.get("x-forwarded-proto")?.split(",")[0].trim();
+  const forwardedHost = request.get("x-forwarded-host")?.split(",")[0].trim();
+  const expected = `${forwardedProtocol || request.protocol}://${forwardedHost || request.get("host")}`;
   if (origin !== expected) {
     response.status(403).json({ ok: false, error: "invalid_origin" });
     return;

@@ -41,11 +41,19 @@ import {
   createUsersHandlers,
 } from "./auth-handlers.js";
 import { createRequireAuth, requireAdmin, requirePasswordChanged, verifySameOrigin } from "./auth-middleware.js";
+import { createRequireInternalSecret } from "./internal-auth.js";
+import { getGlobalAiEnabled, setGlobalAiEnabled } from "./ai-control-repository.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
 
-export function createApp({ authService = createAuthService(), loginRateLimiter = createLoginRateLimiter() } = {}) {
+export function createApp({
+  authService = createAuthService(),
+  loginRateLimiter = createLoginRateLimiter(),
+  aiControlReader = getGlobalAiEnabled,
+  aiControlWriter = setGlobalAiEnabled,
+  internalApiSecret = process.env.N8N_INTERNAL_API_SECRET,
+} = {}) {
   const app = express();
 
   app.disable("x-powered-by");
@@ -54,6 +62,11 @@ export function createApp({ authService = createAuthService(), loginRateLimiter 
   app.use("/api", verifySameOrigin);
   app.get("/api/health/database", createDatabaseHealthHandler());
   app.post("/api/auth/login", createLoginHandler(authService, loginRateLimiter));
+  app.get(
+    "/api/internal/ai-control",
+    createRequireInternalSecret(internalApiSecret),
+    createGetAiControlHandler(aiControlReader),
+  );
 
   app.use("/api", createRequireAuth(authService));
   app.get("/api/auth/me", createMeHandler());
@@ -83,8 +96,8 @@ export function createApp({ authService = createAuthService(), loginRateLimiter 
   app.delete("/api/scheduling/blocks", createDeleteScheduleBlocksHandler());
   app.get("/api/appointments", createListAppointmentsHandler());
   app.post("/api/appointments", createPostAppointmentHandler());
-  app.get("/api/ai-control", createGetAiControlHandler());
-  app.patch("/api/ai-control", createPatchAiControlHandler());
+  app.get("/api/ai-control", createGetAiControlHandler(aiControlReader));
+  app.patch("/api/ai-control", createPatchAiControlHandler(aiControlWriter));
   app.use(express.static(distDirectory));
   app.use((request, response, next) => {
     if (request.method !== "GET" || request.path.startsWith("/api/")) {

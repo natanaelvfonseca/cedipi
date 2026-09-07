@@ -30,6 +30,7 @@ for (const enabled of [false, true]) {
 
     assert.equal(request.url, "/api/ai-control");
     assert.equal(request.options.method, "PATCH");
+    assert.equal(request.options.credentials, "same-origin");
     assert.deepEqual(JSON.parse(request.options.body), { enabled });
     assert.equal(result, enabled);
   });
@@ -42,6 +43,15 @@ test("switch fica bloqueado durante PATCH", () => {
   );
   assert.equal(state.saving, true);
   assert.equal(isAiControlSwitchDisabled(state), true);
+});
+
+test("GET do painel envia cookie da sessão no mesmo domínio", async () => {
+  let options;
+  await getAiControl(undefined, async (_url, requestOptions) => {
+    options = requestOptions;
+    return Response.json({ ok: true, globalEnabled: true });
+  });
+  assert.equal(options.credentials, "same-origin");
 });
 
 test("falha no PATCH restaura o estado anterior", () => {
