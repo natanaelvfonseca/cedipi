@@ -6,6 +6,11 @@ import {
   createConnectWhatsAppHandler,
   createGetWhatsAppInstanceHandler,
 } from "./whatsapp-handlers.js";
+import {
+  createListAppointmentsHandler,
+  createListAvailabilityHandler,
+  createListDoctorsHandler,
+} from "./scheduling-handlers.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
@@ -17,6 +22,9 @@ export function createApp() {
   app.get("/api/health/database", createDatabaseHealthHandler());
   app.get("/api/whatsapp/instance", createGetWhatsAppInstanceHandler());
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
+  app.get("/api/doctors", createListDoctorsHandler());
+  app.get("/api/scheduling/availability", createListAvailabilityHandler());
+  app.get("/api/appointments", createListAppointmentsHandler());
   app.use(express.static(distDirectory));
   app.use((request, response, next) => {
     if (request.method !== "GET" || request.path.startsWith("/api/")) {
