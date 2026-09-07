@@ -135,6 +135,13 @@ export function createEvolutionClient({
     });
   }
 
+  async function getMediaFromMessage(message) {
+    return request(`/chat/getBase64FromMediaMessage/${cedipiInstanceName}`, {
+      method: "POST",
+      payload: { message },
+    });
+  }
+
   async function sendText(number, text) {
     return request(`/message/sendText/${cedipiInstanceName}`, {
       method: "POST",
@@ -149,6 +156,7 @@ export function createEvolutionClient({
     logoutInstance,
     findChats,
     findMessages,
+    getMediaFromMessage,
     sendText,
   };
 }

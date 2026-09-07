@@ -20,6 +20,7 @@ import {
 } from "./ai-control-handlers.js";
 import {
   createGetConversationAiControlHandler,
+  createGetWhatsAppMessageMediaHandler,
   createListWhatsAppConversationsHandler,
   createListWhatsAppMessagesHandler,
   createPatchConversationAiControlHandler,
@@ -40,6 +41,7 @@ export function createApp() {
   app.post("/api/whatsapp/instance/disconnect", createDisconnectWhatsAppHandler());
   app.get("/api/whatsapp/conversations", createListWhatsAppConversationsHandler());
   app.get("/api/whatsapp/conversations/:conversationId/messages", createListWhatsAppMessagesHandler());
+  app.get("/api/whatsapp/conversations/:conversationId/messages/:messageId/media", createGetWhatsAppMessageMediaHandler());
   app.post("/api/whatsapp/conversations/:conversationId/messages", createSendWhatsAppMessageHandler());
   app.get("/api/whatsapp/conversations/:phone/ai-control", createGetConversationAiControlHandler());
   app.patch("/api/whatsapp/conversations/:phone/ai-control", createPatchConversationAiControlHandler());

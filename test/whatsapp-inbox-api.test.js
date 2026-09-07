@@ -4,6 +4,7 @@ import {
   getConversationAiControl,
   getWhatsAppConversations,
   getWhatsAppMessages,
+  getWhatsAppMessageMedia,
   patchConversationAiControl,
   sendWhatsAppMessage,
 } from "../app/whatsapp-api.ts";
@@ -26,6 +27,24 @@ test("carrega a lista de conversas", async () => {
   });
   assert.equal(url, "/api/whatsapp/conversations");
   assert.deepEqual(result, [conversation]);
+});
+
+test("baixa mídia somente pela rota backend usando o JID original", async () => {
+  let url;
+  const media = await getWhatsAppMessageMedia(conversation.id, "MEDIA-ID", undefined, async (requested) => {
+    url = requested;
+    return new Response("imagem", { headers: { "content-type": "image/jpeg" } });
+  });
+  assert.equal(url, "/api/whatsapp/conversations/554791935149%40s.whatsapp.net/messages/MEDIA-ID/media");
+  assert.equal(await media.text(), "imagem");
+  assert.equal(url.includes("EVOLUTION_API_KEY"), false);
+});
+
+test("falha de mídia não expõe corpo técnico", async () => {
+  await assert.rejects(
+    getWhatsAppMessageMedia(conversation.id, "missing", undefined, async () => Response.json({ ok: false, error: "media_not_found" }, { status: 404 })),
+    { name: "WhatsAppInboxApiError" },
+  );
 });
 
 test("usa o JID original codificado para buscar mensagens", async () => {

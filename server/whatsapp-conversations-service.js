@@ -112,6 +112,85 @@ function mapExternalError(error) {
   return new WhatsAppConversationError("whatsapp_inbox_unavailable", 502);
 }
 
+const maximumMediaBytes = 50 * 1024 * 1024;
+
+function messageRemoteJids(record) {
+  return [record?.key?.remoteJid, record?.key?.remoteJidAlt, record?.remoteJid]
+    .filter((value) => typeof value === "string");
+}
+
+function safeFileName(value, fallback) {
+  const leaf = typeof value === "string" ? value.split(/[\\/]/).at(-1) : "";
+  const cleaned = leaf
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f"<>:|?*]/g, "_")
+    .replace(/^\.+/, "")
+    .trim()
+    .slice(0, 140);
+  return cleaned || fallback;
+}
+
+function extensionFor(contentType) {
+  return {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "application/pdf": "pdf",
+  }[contentType] ?? "bin";
+}
+
+function normalizedContentType(value) {
+  if (typeof value !== "string") return null;
+  const contentType = value.split(";", 1)[0].trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(contentType)
+    ? contentType
+    : null;
+}
+
+function mediaContentType(type, value) {
+  const contentType = normalizedContentType(value);
+  if (type === "image" && ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(contentType)) return contentType;
+  if (type === "audio" && contentType?.startsWith("audio/")) return contentType;
+  if (type === "document" && contentType && !contentType.startsWith("text/html") && contentType !== "image/svg+xml") return contentType;
+  throw new WhatsAppConversationError("unsupported_media", 415);
+}
+
+function decodeMediaBase64(value) {
+  if (typeof value !== "string") throw new WhatsAppConversationError("media_unavailable", 502);
+  const encoded = value.includes(",") && value.startsWith("data:") ? value.slice(value.indexOf(",") + 1) : value;
+  const compact = encoded.replace(/\s/g, "");
+  if (!compact || compact.length > Math.ceil(maximumMediaBytes * 4 / 3) + 4
+    || compact.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) {
+    throw new WhatsAppConversationError("media_unavailable", 502);
+  }
+  const buffer = Buffer.from(compact, "base64");
+  if (!buffer.length || buffer.length > maximumMediaBytes) {
+    throw new WhatsAppConversationError("media_unavailable", 502);
+  }
+  return buffer;
+}
+
+async function findOwnedMessage(client, remoteJid, messageId) {
+  let currentPage = 1;
+  let totalPages = 1;
+  do {
+    const result = pageFromMessages(await client.findMessages(remoteJid, { page: currentPage, offset: 100 }));
+    const record = result.records.find((candidate) => (
+      (candidate?.key?.id ?? candidate?.id) === messageId
+      && messageRemoteJids(candidate).includes(remoteJid)
+    ));
+    if (record) return record;
+    totalPages = result.pages;
+    currentPage += 1;
+  } while (currentPage <= totalPages);
+  throw new WhatsAppConversationError("media_not_found", 404);
+}
+
 export function createWhatsAppConversationsService({
   evolution,
   aiControl,
@@ -162,6 +241,31 @@ export function createWhatsAppConversationsService({
       }
     },
 
+    async getMedia(remoteJid, messageId) {
+      try {
+        const client = evolutionClient();
+        const record = await findOwnedMessage(client, remoteJid, messageId);
+        const type = messageKind(record);
+        if (type === "text") throw new WhatsAppConversationError("unsupported_media", 415);
+        const payload = await client.getMediaFromMessage(record);
+        const contentType = mediaContentType(type, payload?.mimetype);
+        const fallbackName = `${messageId}.${extensionFor(contentType)}`;
+        return {
+          buffer: decodeMediaBase64(payload?.base64),
+          contentType,
+          fileName: safeFileName(
+            payload?.fileName ?? (type === "document" ? textFromMessage(record, type) : null),
+            fallbackName,
+          ),
+          disposition: type === "document" && contentType !== "application/pdf" ? "attachment" : "inline",
+        };
+      } catch (error) {
+        if (error instanceof WhatsAppConversationError) throw error;
+        if (error instanceof EvolutionApiError) throw new WhatsAppConversationError("media_unavailable", 502);
+        throw new WhatsAppConversationError("media_unavailable", 502);
+      }
+    },
+
     async sendManualMessage({ remoteJid, phone, text }) {
       try {
         const enabled = await aiControlClient().setEnabled(phone, false);
@@ -198,6 +302,7 @@ function service() {
 export const whatsappConversationsService = {
   listConversations: () => service().listConversations(),
   listMessages: (remoteJid) => service().listMessages(remoteJid),
+  getMedia: (remoteJid, messageId) => service().getMedia(remoteJid, messageId),
   sendManualMessage: (input) => service().sendManualMessage(input),
   getAiControl: (phone) => service().getAiControl(phone),
   setAiControl: (phone, enabled) => service().setAiControl(phone, enabled),

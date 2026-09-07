@@ -63,6 +63,29 @@ test("findMessages preserva o JID original sem aplicar o nono dígito", async ()
   assert.equal(body.page, 2);
 });
 
+test("mídia usa a rota oficial da Evolution e envia o objeto real da mensagem", async () => {
+  const requests = [];
+  const message = {
+    key: { id: "MEDIA-ID", remoteJid: "554791935149@s.whatsapp.net", fromMe: false },
+    message: { imageMessage: { mimetype: "image/jpeg" } },
+  };
+  const client = createEvolutionClient({
+    baseUrl: "https://evolution.example",
+    apiKey: "secret-key",
+    instanceName: "Cedipi",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      return Response.json({ mimetype: "image/jpeg", base64: "aW1hZ2Vt" }, { status: 201 });
+    },
+  });
+
+  await client.getMediaFromMessage(message);
+  assert.equal(requests[0].url, "https://evolution.example/chat/getBase64FromMediaMessage/Cedipi");
+  assert.equal(requests[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(requests[0].options.body), { message });
+  assert.equal(requests[0].options.headers.apikey, "secret-key");
+});
+
 test("Evolution rejeita configuração com cedipi minúsculo", () => {
   assert.throws(() => createEvolutionClient({
     baseUrl: "https://evolution.example",

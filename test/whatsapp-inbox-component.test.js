@@ -31,3 +31,33 @@ test("layout mobile alterna lista e chat sem overflow horizontal", () => {
   assert.equal(styles.includes("grid-template-columns: 330px minmax(0,1fr)"), true);
   assert.equal(styles.includes("min-width: 0"), true);
 });
+
+test("mídias são carregadas separadamente e possuem fallbacks visuais", () => {
+  assert.equal(source.includes("getWhatsAppMessageMedia"), true);
+  assert.equal(source.includes("Imagem indisponível"), true);
+  assert.equal(source.includes("Áudio indisponível"), true);
+  assert.equal(source.includes("Documento indisponível"), true);
+  assert.equal(source.includes("<audio controls"), true);
+  assert.equal(source.includes("Abrir documento"), true);
+});
+
+test("polling de mensagens não inclui download de mídia", () => {
+  const pollingTask = source.match(/task: \(\) => loadMessages\([^\n]+/g) ?? [];
+  assert.equal(pollingTask.length > 0, true);
+  assert.equal(pollingTask.some((line) => line.includes("getWhatsAppMessageMedia")), false);
+});
+
+test("imagens carregam apenas quando entram na área visível", () => {
+  assert.equal(source.includes("new IntersectionObserver"), true);
+  assert.equal(source.includes('message.type === "image" ? imageVisible : requested'), true);
+});
+
+test("object URLs são revogadas ao desmontar ou trocar de conversa", () => {
+  assert.equal(source.includes("URL.createObjectURL(blob)"), true);
+  assert.equal(source.includes("URL.revokeObjectURL(objectUrl)"), true);
+});
+
+test("frontend não contém API key nem URL da Evolution", () => {
+  assert.equal(source.includes("EVOLUTION_API_KEY"), false);
+  assert.equal(source.includes("getBase64FromMediaMessage"), false);
+});

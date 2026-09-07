@@ -60,6 +60,45 @@ export function createListWhatsAppMessagesHandler(service = whatsappConversation
   };
 }
 
+function validMessageId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{1,200}$/.test(value);
+}
+
+function contentDisposition(disposition, fileName) {
+  const asciiName = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  const encodedName = encodeURIComponent(fileName).replace(/[!'()*]/g, (character) => (
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  ));
+  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+}
+
+export function createGetWhatsAppMessageMediaHandler(service = whatsappConversationsService) {
+  return async function getWhatsAppMessageMediaHandler(request, response) {
+    const identity = parsedIdentity(request.params.conversationId);
+    const messageId = request.params.messageId;
+    if (!identity) {
+      response.status(400).json({ ok: false, error: "invalid_conversation" });
+      return;
+    }
+    if (!validMessageId(messageId)) {
+      response.status(400).json({ ok: false, error: "invalid_message" });
+      return;
+    }
+    try {
+      const media = await service.getMedia(identity.remoteJid, messageId);
+      response.status(200);
+      response.setHeader("Content-Type", media.contentType);
+      response.setHeader("Content-Length", String(media.buffer.length));
+      response.setHeader("Content-Disposition", contentDisposition(media.disposition, media.fileName));
+      response.setHeader("Cache-Control", "private, max-age=300");
+      response.setHeader("X-Content-Type-Options", "nosniff");
+      response.send(media.buffer);
+    } catch (error) {
+      respondWithError(error, response);
+    }
+  };
+}
+
 export function createSendWhatsAppMessageHandler(service = whatsappConversationsService) {
   return async function sendWhatsAppMessageHandler(request, response) {
     const identity = parsedIdentity(request.params.conversationId);

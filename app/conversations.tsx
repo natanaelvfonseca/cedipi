@@ -10,6 +10,7 @@ import {
   Search,
   Send,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import {
   FormEvent,
   KeyboardEvent,
@@ -24,6 +25,7 @@ import {
   getConversationAiControl,
   getWhatsAppConversations,
   getWhatsAppMessages,
+  getWhatsAppMessageMedia,
   patchConversationAiControl,
   sendWhatsAppMessage,
   type WhatsAppConversation,
@@ -68,12 +70,126 @@ function ContactAvatar({ conversation, size = "regular" }: {
   return <span className={className}>{conversationInitial(conversation.name, conversation.phone)}</span>;
 }
 
-function MessageContent({ message }: { message: WhatsAppMessage }) {
+type MediaLoadState = "idle" | "loading" | "ready" | "error";
+
+function useMessageMedia(conversationId: string, messageId: string | null, shouldLoad: boolean, retryVersion: number) {
+  const [resource, setResource] = useState<{ state: MediaLoadState; url: string | null }>({ state: "idle", url: null });
+
+  useEffect(() => {
+    if (!shouldLoad || !messageId) {
+      setResource({ state: "idle", url: null });
+      return undefined;
+    }
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setResource({ state: "loading", url: null });
+    void getWhatsAppMessageMedia(conversationId, messageId, controller.signal)
+      .then((blob) => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setResource({ state: "ready", url: objectUrl });
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setResource({ state: "error", url: null });
+        }
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [conversationId, messageId, retryVersion, shouldLoad]);
+
+  return resource;
+}
+
+function ImagePreview({ url, caption, close }: { url: string; caption: string | null; close: () => void }) {
+  return createPortal(
+    <div className="media-preview" role="dialog" aria-modal="true" aria-label="Visualização da imagem" onClick={close}>
+      <button type="button" onClick={close} aria-label="Fechar visualização">×</button>
+      <figure onClick={(event) => event.stopPropagation()}>
+        <img src={url} alt={caption || "Imagem da conversa"} />
+        {caption ? <figcaption>{caption}</figcaption> : null}
+      </figure>
+    </div>,
+    document.body,
+  );
+}
+
+function MessageContent({ message, conversationId }: { message: WhatsAppMessage; conversationId: string }) {
   const presentation = messagePresentation(message);
   const Icon = message.type === "audio" ? Mic : message.type === "image" ? ImageIcon : FileText;
+  const [requested, setRequested] = useState(false);
+  const [retryVersion, setRetryVersion] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const [imageVisible, setImageVisible] = useState(false);
+  const mediaContainer = useRef<HTMLDivElement | null>(null);
+  const shouldLoad = message.type === "image" ? imageVisible : requested;
+  const media = useMessageMedia(conversationId, message.id, shouldLoad && message.type !== "text", retryVersion);
+  const unavailable = !message.id || media.state === "error" || renderFailed;
+
+  useEffect(() => setRenderFailed(false), [media.url]);
+
+  useEffect(() => {
+    if (message.type !== "image" || !mediaContainer.current) return undefined;
+    if (typeof IntersectionObserver === "undefined") {
+      setImageVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setImageVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "160px" });
+    observer.observe(mediaContainer.current);
+    return () => observer.disconnect();
+  }, [message.type]);
+
+  function requestMedia() {
+    setRenderFailed(false);
+    if (requested) setRetryVersion((current) => current + 1);
+    else setRequested(true);
+  }
+
+  if (message.type === "image") {
+    return <>
+      <div className={`message-image ${media.state}`} ref={mediaContainer}>
+        {!unavailable && (media.state === "loading" || media.state === "idle") ? <span className="media-skeleton">Carregando imagem...</span> : null}
+        {!unavailable && media.state === "ready" && media.url ? <button type="button" onClick={() => setPreviewOpen(true)} aria-label="Ampliar imagem"><img src={media.url} alt={message.text || "Imagem da conversa"} onError={() => setRenderFailed(true)} /></button> : null}
+        {unavailable ? <span className="media-fallback"><ImageIcon size={16} />Imagem indisponível</span> : null}
+      </div>
+      {message.text ? <p className="message-media-caption">{message.text}</p> : null}
+      {previewOpen && media.url ? <ImagePreview url={media.url} caption={message.text} close={() => setPreviewOpen(false)} /> : null}
+    </>;
+  }
+
+  if (message.type === "audio") {
+    return <div className="message-media-resource">
+      {!unavailable && media.state === "ready" && media.url
+        ? <audio controls preload="metadata" src={media.url} onError={() => setRenderFailed(true)}>Áudio indisponível</audio>
+        : !message.id ? null : <button type="button" onClick={requestMedia} disabled={media.state === "loading"}>
+          <Mic size={15} />{media.state === "loading" ? "Carregando áudio..." : media.state === "error" ? "Tentar carregar áudio" : "Carregar áudio"}
+        </button>}
+      {unavailable ? <span className="media-error">Áudio indisponível</span> : null}
+    </div>;
+  }
+
+  if (message.type === "document") {
+    return <div className="message-document">
+      <span className="message-media-label"><Icon size={15} />{presentation.label || "Documento"}</span>
+      {!unavailable && media.state === "ready" && media.url
+        ? <a href={media.url} target="_blank" rel="noreferrer">Abrir documento</a>
+        : !message.id ? null : <button type="button" onClick={requestMedia} disabled={media.state === "loading"}>
+          {media.state === "loading" ? "Carregando documento..." : media.state === "error" ? "Tentar novamente" : "Abrir documento"}
+        </button>}
+      {unavailable ? <span className="media-error">Documento indisponível</span> : null}
+    </div>;
+  }
+
   return (
     <>
-      {message.type !== "text" ? <span className="message-media-label"><Icon size={15} />{presentation.label}</span> : null}
       {presentation.detail ? <p>{presentation.detail}</p> : null}
     </>
   );
@@ -340,7 +456,7 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
                 {messages.map((message, index) => (
                   <div className={`message-row ${messageSide(message) === "cedipi" ? "outgoing" : "incoming"}`} key={message.id ?? `${message.timestamp}-${index}`}>
                     <div className="message-bubble">
-                      <MessageContent message={message} />
+                      <MessageContent message={message} conversationId={selectedConversation.id} />
                       <span className="message-meta"><time>{formatMessageTime(message.timestamp)}</time>{message.fromMe && deliveryLabel(message.status) ? <span><CheckCheck size={12} />{deliveryLabel(message.status)}</span> : null}</span>
                     </div>
                   </div>

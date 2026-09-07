@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { N8nAiControlError } from "../server/n8n-ai-control-client.js";
+import { WhatsAppConversationError } from "../server/whatsapp-conversations-service.js";
 import {
   createGetConversationAiControlHandler,
+  createGetWhatsAppMessageMediaHandler,
   createListWhatsAppConversationsHandler,
   createListWhatsAppMessagesHandler,
   createPatchConversationAiControlHandler,
   createSendWhatsAppMessageHandler,
 } from "../server/whatsapp-conversations-handlers.js";
+
+const jid = "5547999999999@s.whatsapp.net";
 
 function responseRecorder() {
   return {
@@ -15,8 +19,58 @@ function responseRecorder() {
     body: undefined,
     status(code) { this.statusCode = code; return this; },
     json(body) { this.body = body; return this; },
+    headers: {},
+    setHeader(name, value) { this.headers[name] = value; },
+    send(body) { this.body = body; return this; },
   };
 }
+
+test("GET mídia devolve bytes e headers seguros", async () => {
+  let received;
+  const response = responseRecorder();
+  await createGetWhatsAppMessageMediaHandler({ async getMedia(remoteJid, messageId) {
+    received = { remoteJid, messageId };
+    return { buffer: Buffer.from("pdf"), contentType: "application/pdf", fileName: "laudo clínico.pdf", disposition: "inline" };
+  } })({ params: { conversationId: "554791935149@s.whatsapp.net", messageId: "ABC-123" } }, response);
+  assert.deepEqual(received, { remoteJid: "554791935149@s.whatsapp.net", messageId: "ABC-123" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["Content-Type"], "application/pdf");
+  assert.equal(response.headers["X-Content-Type-Options"], "nosniff");
+  assert.equal(response.headers["Content-Disposition"].includes("filename*=UTF-8''"), true);
+  assert.equal(response.body.toString(), "pdf");
+});
+
+test("GET mídia rejeita conversationId e messageId inválidos", async () => {
+  let calls = 0;
+  const service = { async getMedia() { calls += 1; } };
+  const invalidConversation = responseRecorder();
+  const invalidMessage = responseRecorder();
+  await createGetWhatsAppMessageMediaHandler(service)({ params: { conversationId: "../etc", messageId: "id" } }, invalidConversation);
+  await createGetWhatsAppMessageMediaHandler(service)({ params: { conversationId: jid, messageId: "../../secret" } }, invalidMessage);
+  assert.deepEqual(invalidConversation.body, { ok: false, error: "invalid_conversation" });
+  assert.deepEqual(invalidMessage.body, { ok: false, error: "invalid_message" });
+  assert.equal(calls, 0);
+});
+
+test("GET mídia normaliza indisponibilidade sem expor segredo", async () => {
+  const secret = "evolution-api-secret";
+  const response = responseRecorder();
+  const logs = [];
+  const originalConsoleError = console.error;
+  console.error = (...values) => logs.push(JSON.stringify(values));
+  try {
+    await createGetWhatsAppMessageMediaHandler({ async getMedia() {
+      const error = new WhatsAppConversationError("media_unavailable", 502);
+      error.internalSecret = secret;
+      throw error;
+    } })({ params: { conversationId: jid, messageId: "media-id" } }, response);
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.deepEqual(response.body, { ok: false, error: "media_unavailable" });
+  assert.equal(JSON.stringify(response.body).includes(secret), false);
+  assert.equal(logs.join(" ").includes(secret), false);
+});
 
 test("GET lista conversas normalizadas", async () => {
   const response = responseRecorder();

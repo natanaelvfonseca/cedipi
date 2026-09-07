@@ -77,6 +77,30 @@ export async function getWhatsAppMessages(
   return payload.messages;
 }
 
+export function whatsappMessageMediaUrl(conversationId: string, messageId: string) {
+  return `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/media`;
+}
+
+export async function getWhatsAppMessageMedia(
+  conversationId: string,
+  messageId: string,
+  signal?: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+) {
+  let response: Response;
+  try {
+    response = await fetchImpl(whatsappMessageMediaUrl(conversationId, messageId), { signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new WhatsAppInboxApiError();
+  }
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!response.ok || !contentType || contentType === "application/json") throw new WhatsAppInboxApiError();
+  const media = await response.blob();
+  if (!media.size) throw new WhatsAppInboxApiError();
+  return media;
+}
+
 export async function sendWhatsAppMessage(
   conversationId: string,
   text: string,
