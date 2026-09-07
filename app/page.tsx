@@ -1,115 +1,113 @@
 "use client";
 
 import {
-  AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound, Clock3,
+  AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3,
   FileText, Menu, MessageCircle, Plus, RefreshCw, Settings, Sparkles, Stethoscope,
-  UserRound, UsersRound, X, XCircle,
+  UserRound, UsersRound, X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AgendaApiError,
+  getAppointments,
+  getAvailability,
+  getDoctors,
+  postAppointmentAndRefresh,
+  type ApiAppointment,
+  type AvailabilitySlot,
+  type Doctor,
+} from "./agenda-api";
+import {
+  acquireSubmissionLock,
+  appointmentErrorMessage,
+  appointmentView,
+  availableSlotsForAppointments,
+  buildCreateAppointmentPayload,
+  doctorById,
+  doctorInitials,
+  slotLocalParts,
+} from "./agenda-model";
 import { getWhatsAppPresentation, type WhatsAppStatus } from "./whatsapp-status";
 
-type DoctorId = "danilo" | "wagner" | "deison";
-type Status = "Confirmado" | "Aguardando confirmação" | "Cancelado";
-type Origin = "Lara IA" | "Recepção" | "WhatsApp";
 type ViewMode = "day" | "week";
 
-type Appointment = {
-  id: number; doctorId: DoctorId; patient: string; phone: string; exam: string;
-  date: string; time: string; endTime: string; origin: Origin; status: Status; notes: string;
-};
-
-type Doctor = {
-  id: DoctorId; name: string; initials: string; demoDate: Date;
-  schedule: Record<number, [string, string][]>;
-};
-
-const doctors: Doctor[] = [
-  {
-    id: "danilo", name: "Dr. Danilo", initials: "DD", demoDate: new Date(2026, 7, 31, 12),
-    schedule: {
-      1: [["09:00", "12:00"], ["14:00", "18:00"]], 2: [["14:00", "18:00"]],
-      3: [["09:00", "12:00"]], 4: [["09:00", "12:00"], ["14:00", "18:00"]],
-      5: [["14:00", "18:00"]],
-    },
-  },
-  {
-    id: "wagner", name: "Dr. Wagner", initials: "DW", demoDate: new Date(2026, 8, 1, 12),
-    schedule: { 2: [["09:00", "12:00"]], 3: [["14:00", "18:00"]], 5: [["09:00", "12:00"]] },
-  },
-  {
-    id: "deison", name: "Dr. Deison", initials: "DD", demoDate: new Date(2026, 8, 2, 12),
-    schedule: { 3: [["15:00", "16:40"]], 5: [["15:00", "16:40"]] },
-  },
-];
-
-const initialAppointments: Appointment[] = [
-  { id: 1, doctorId: "danilo", patient: "Maria Oliveira", phone: "(11) 98745-3210", exam: "Ultrassom de abdômen total", date: "2026-08-31", time: "09:00", endTime: "09:20", origin: "WhatsApp", status: "Confirmado", notes: "Paciente orientada sobre jejum de 6 horas." },
-  { id: 2, doctorId: "danilo", patient: "Ana Paula Santos", phone: "(11) 99624-8137", exam: "Ultrassom transvaginal", date: "2026-08-31", time: "10:00", endTime: "10:20", origin: "Lara IA", status: "Confirmado", notes: "Agendamento concluído automaticamente pelo atendimento da Lara." },
-  { id: 3, doctorId: "danilo", patient: "Carlos Mendes", phone: "(11) 98802-4401", exam: "Doppler venoso de membro inferior", date: "2026-08-31", time: "11:20", endTime: "11:40", origin: "Recepção", status: "Aguardando confirmação", notes: "Aguardando retorno do paciente pelo WhatsApp." },
-  { id: 4, doctorId: "danilo", patient: "Fernanda Lima", phone: "(11) 98218-7654", exam: "Ultrassom de tireoide", date: "2026-08-31", time: "14:40", endTime: "15:00", origin: "Lara IA", status: "Confirmado", notes: "Paciente recebeu as orientações de preparo." },
-  { id: 5, doctorId: "danilo", patient: "Juliana Rocha", phone: "(11) 99122-3055", exam: "Ultrassom de mama", date: "2026-08-31", time: "16:00", endTime: "16:20", origin: "Recepção", status: "Confirmado", notes: "Trazer exames anteriores para comparação." },
-  { id: 6, doctorId: "wagner", patient: "Roberto Nascimento", phone: "(11) 98170-6492", exam: "Ultrassom de próstata", date: "2026-09-01", time: "09:20", endTime: "09:40", origin: "Lara IA", status: "Confirmado", notes: "Orientações enviadas pela Lara." },
-  { id: 7, doctorId: "wagner", patient: "Sônia Martins", phone: "(11) 99028-1160", exam: "Ultrassom pélvico", date: "2026-09-01", time: "10:20", endTime: "10:40", origin: "Recepção", status: "Aguardando confirmação", notes: "Contato realizado pela recepção." },
-  { id: 8, doctorId: "deison", patient: "Patrícia Gomes", phone: "(11) 97420-8993", exam: "Doppler de carótidas", date: "2026-09-02", time: "15:00", endTime: "15:20", origin: "WhatsApp", status: "Confirmado", notes: "Chegar com 15 minutos de antecedência." },
-];
-
 const navItems = [
-  { label: "Agenda", icon: CalendarDays, active: true }, { label: "Pacientes", icon: UsersRound },
-  { label: "Médicos", icon: Stethoscope }, { label: "Configurações", icon: Settings },
+  { label: "Agenda", icon: CalendarDays, active: true },
+  { label: "Pacientes", icon: UsersRound },
+  { label: "Médicos", icon: Stethoscope },
+  { label: "Configurações", icon: Settings },
 ];
 
-const exams = [
-  "Ultrassom de abdômen total", "Ultrassom transvaginal", "Ultrassom de tireoide",
-  "Ultrassom de mama", "Doppler venoso de membro inferior", "Doppler de carótidas",
-  "Ultrassom pélvico", "Ultrassom de próstata",
-];
-
-const slotTimes = Array.from({ length: 31 }, (_, index) => {
-  const total = 8 * 60 + index * 20;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-});
-
-function toMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-function addMinutes(time: string, amount: number) {
-  const total = toMinutes(time) + amount;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
+
 function fromDateKey(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day, 12);
 }
+
+function todayInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => (
+    parts.find((item) => item.type === type)?.value ?? ""
+  );
+  return fromDateKey(`${part("year")}-${part("month")}-${part("day")}`);
+}
+
 function addDays(date: Date, amount: number) {
-  const next = new Date(date); next.setDate(next.getDate() + amount); return next;
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
 }
-function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function displayDate(date: Date, includeYear = false) {
-  return date.toLocaleDateString("pt-BR", { weekday: includeYear ? undefined : "long", day: "numeric", month: "long", year: includeYear ? "numeric" : undefined });
+  return date.toLocaleDateString("pt-BR", {
+    weekday: includeYear ? undefined : "long",
+    day: "numeric",
+    month: "long",
+    year: includeYear ? "numeric" : undefined,
+  });
 }
-function isWithinSchedule(doctor: Doctor, date: Date, time: string) {
-  const ranges = doctor.schedule[date.getDay()] ?? []; const current = toMinutes(time);
-  return ranges.some(([start, end]) => current >= toMinutes(start) && current < toMinutes(end));
-}
-function isOffHoursLabel(doctor: Doctor, date: Date, time: string) {
-  return time === "08:00" || isWithinSchedule(doctor, date, addMinutes(time, -20));
-}
+
 function weekDays(date: Date) {
   const monday = addDays(date, date.getDay() === 0 ? -6 : 1 - date.getDay());
   return Array.from({ length: 5 }, (_, index) => addDays(monday, index));
 }
 
-function OriginBadge({ origin }: { origin: Origin }) {
-  const Icon = origin === "Lara IA" ? Sparkles : origin === "WhatsApp" ? MessageCircle : UserRound;
-  return <span className={`origin-badge origin-${origin.toLowerCase().replace(" ", "-")}`}><Icon size={12} strokeWidth={2.2} />{origin}</span>;
+function sourcePresentation(source: string) {
+  if (source === "lara") return { label: "Lara IA", icon: Sparkles, className: "lara-ia" };
+  if (source === "panel") return { label: "Recepção", icon: UserRound, className: "recepção" };
+  if (source === "import") return { label: "Importação", icon: FileText, className: "importação" };
+  return { label: source, icon: FileText, className: "importação" };
 }
-function StatusBadge({ status }: { status: Status }) {
-  const className = status === "Confirmado" ? "confirmed" : status === "Cancelado" ? "cancelled" : "pending";
-  return <span className={`status-badge status-${className}`}>{status}</span>;
+
+function OriginBadge({ source }: { source: string }) {
+  const presentation = sourcePresentation(source);
+  const Icon = presentation.icon;
+  return <span className={`origin-badge origin-${presentation.className}`}><Icon size={12} strokeWidth={2.2} />{presentation.label}</span>;
+}
+
+function statusPresentation(status: string) {
+  if (status === "confirmed" || status === "scheduled") return { label: "Confirmado", className: "confirmed" };
+  if (status === "pending") return { label: "Aguardando confirmação", className: "pending" };
+  if (status === "completed") return { label: "Concluído", className: "confirmed" };
+  if (status === "no_show") return { label: "Não compareceu", className: "cancelled" };
+  if (status === "failed") return { label: "Falhou", className: "cancelled" };
+  return { label: "Cancelado", className: "cancelled" };
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const presentation = statusPresentation(status);
+  return <span className={`status-badge status-${presentation.className}`}>{presentation.label}</span>;
 }
 
 type WhatsAppInstance = {
@@ -235,55 +233,173 @@ function WhatsAppConnection() {
 }
 
 export default function Home() {
-  const [selectedDoctorId, setSelectedDoctorId] = useState<DoctorId>("danilo");
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 7, 31, 12));
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(todayInSaoPaulo);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
-  const [appointments, setAppointments] = useState(initialAppointments);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [newModal, setNewModal] = useState<{ open: boolean; time?: string }>({ open: false });
-  const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [availabilityByDate, setAvailabilityByDate] = useState<Record<string, AvailabilitySlot[]>>({});
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [agendaError, setAgendaError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const submissionLock = useRef(false);
 
-  const selectedDoctor = doctors.find((doctor) => doctor.id === selectedDoctorId)!;
-  const selectedAppointment = appointments.find((appointment) => appointment.id === selectedId) ?? null;
+  const selectedDoctor = doctorById(doctors, selectedDoctorId);
+  const selectedDoctorName = selectedDoctor?.name ?? null;
   const dateKey = toDateKey(selectedDate);
-  const dayAppointments = appointments.filter((appointment) => appointment.doctorId === selectedDoctorId && appointment.date === dateKey);
-  const workingSlots = slotTimes.filter((time) => isWithinSchedule(selectedDoctor, selectedDate, time));
-  const availableCount = Math.max(0, workingSlots.length - dayAppointments.length);
-  const confirmedCount = dayAppointments.filter((appointment) => appointment.status === "Confirmado").length;
-  const pendingCount = dayAppointments.filter((appointment) => appointment.status === "Aguardando confirmação").length;
-  const availableTimes = useMemo(() => workingSlots.filter((time) => !dayAppointments.some((appointment) => appointment.time === time)), [workingSlots, dayAppointments]);
+  const visibleDates = useMemo(
+    () => (viewMode === "day" ? [dateKey] : weekDays(selectedDate).map(toDateKey)),
+    [dateKey, selectedDate, viewMode],
+  );
+  const visibleDatesKey = visibleDates.join(",");
+  const appointmentViews = useMemo(() => appointments.map(appointmentView), [appointments]);
+  const selectedAppointment = appointmentViews.find((appointment) => appointment.id === selectedId) ?? null;
+  const dayAppointments = appointmentViews.filter(
+    (appointment) => appointment.doctor.id === selectedDoctorId && appointment.date === dateKey,
+  );
+  const configuredSlots = availabilityByDate[dateKey] ?? [];
+  const availableSlots = useMemo(
+    () => availableSlotsForAppointments(configuredSlots, appointments),
+    [appointments, configuredSlots],
+  );
+  const confirmedCount = dayAppointments.filter(
+    (appointment) => appointment.status === "confirmed" || appointment.status === "scheduled",
+  ).length;
+  const pendingCount = dayAppointments.filter((appointment) => appointment.status === "pending").length;
+  const timelineItems = useMemo(() => {
+    const eventItems = dayAppointments.map((appointment) => ({
+      type: "appointment" as const,
+      id: appointment.id,
+      time: appointment.time,
+      appointment,
+    }));
+    const slotItems = availableSlots.map((slot) => ({
+      type: "slot" as const,
+      id: slot.id,
+      time: slotLocalParts(slot).time,
+      slot,
+    }));
+    return [...eventItems, ...slotItems].sort(
+      (left, right) => left.time.localeCompare(right.time) || left.type.localeCompare(right.type),
+    );
+  }, [availableSlots, dayAppointments]);
 
-  function showToast(message: string) {
-    setToast(message); window.setTimeout(() => setToast(null), 3200);
+  const showToast = useCallback((message: string, kind: "success" | "error" = "success") => {
+    setToast({ message, kind });
+    window.setTimeout(() => setToast(null), 3600);
+  }, []);
+
+  const loadDoctors = useCallback(async (signal?: AbortSignal) => {
+    setDoctorsLoading(true);
+    setAgendaError(null);
+    try {
+      const items = await getDoctors(signal);
+      setDoctors(items);
+      setSelectedDoctorId((current) => (
+        items.some((doctor) => doctor.id === current) ? current : items[0]?.id ?? null
+      ));
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setAgendaError("Não foi possível carregar os médicos.");
+    } finally {
+      if (!signal?.aborted) setDoctorsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadDoctors(controller.signal);
+    return () => controller.abort();
+  }, [loadDoctors]);
+
+  const loadAgenda = useCallback(async (signal?: AbortSignal) => {
+    if (!selectedDoctorName) return;
+    const dates = visibleDatesKey.split(",").filter(Boolean);
+    setAgendaLoading(true);
+    setAgendaError(null);
+    try {
+      const [slotGroups, nextAppointments] = await Promise.all([
+        Promise.all(dates.map(async (date) => ({
+          date,
+          slots: await getAvailability(date, selectedDoctorName, signal),
+        }))),
+        getAppointments(signal),
+      ]);
+      if (signal?.aborted) return;
+      setAvailabilityByDate((current) => {
+        const next = { ...current };
+        for (const group of slotGroups) next[group.date] = group.slots;
+        return next;
+      });
+      setAppointments(nextAppointments);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setAgendaError("Não foi possível carregar a agenda. Tente novamente.");
+    } finally {
+      if (!signal?.aborted) setAgendaLoading(false);
+    }
+  }, [selectedDoctorName, visibleDatesKey]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadAgenda(controller.signal);
+    return () => controller.abort();
+  }, [loadAgenda]);
+
+  function openFirstAvailableSlot() {
+    if (availableSlots[0]) {
+      setFormError(null);
+      setSelectedSlot(availableSlots[0]);
+      return;
+    }
+    showToast("Não há horários disponíveis para este médico nesta data.", "error");
   }
-  function selectDoctor(id: DoctorId) {
-    const doctor = doctors.find((item) => item.id === id)!;
-    setSelectedDoctorId(id); setSelectedDate(doctor.demoDate);
-  }
-  function createAppointment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    const doctorId = form.get("doctor") as DoctorId; const date = String(form.get("date")); const time = String(form.get("time"));
-    const appointment: Appointment = {
-      id: Date.now(), doctorId, patient: String(form.get("patient")), phone: String(form.get("phone")),
-      exam: String(form.get("exam")), date, time, endTime: addMinutes(time, 20), origin: "Recepção",
-      status: "Confirmado", notes: String(form.get("notes") ?? ""),
-    };
-    setAppointments((current) => [...current, appointment]); setSelectedDoctorId(doctorId);
-    setSelectedDate(fromDateKey(date)); setNewModal({ open: false }); showToast("Agendamento realizado com sucesso.");
-  }
-  function rescheduleAppointment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!selectedAppointment) return; const form = new FormData(event.currentTarget);
-    const date = String(form.get("date")); const time = String(form.get("time"));
-    setAppointments((current) => current.map((appointment) => appointment.id === selectedAppointment.id ? { ...appointment, date, time, endTime: addMinutes(time, 20) } : appointment));
-    setSelectedDate(fromDateKey(date)); setRescheduleOpen(false); setSelectedId(null); showToast("Agendamento remarcado com sucesso.");
-  }
-  function cancelAppointment() {
-    if (!selectedAppointment) return;
-    setAppointments((current) => current.filter((appointment) => appointment.id !== selectedAppointment.id));
-    setCancelOpen(false); setSelectedId(null); showToast("Agendamento cancelado. O horário está disponível novamente.");
+
+  async function createAppointment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedSlot || !acquireSubmissionLock(submissionLock)) return;
+
+    setSubmitting(true);
+    setFormError(null);
+    const form = new FormData(event.currentTarget);
+    const payload = buildCreateAppointmentPayload(selectedSlot, {
+      name: String(form.get("patient") ?? ""),
+      phone: String(form.get("phone") ?? ""),
+      email: String(form.get("email") ?? ""),
+      exam: String(form.get("exam") ?? ""),
+    });
+
+    try {
+      await postAppointmentAndRefresh(payload, () => loadAgenda());
+      setSelectedSlot(null);
+      showToast("Agendamento realizado com sucesso.");
+    } catch (error) {
+      const code = error instanceof AgendaApiError ? error.code : "request_failed";
+      const message = appointmentErrorMessage(code);
+      if ([
+        "slot_already_occupied",
+        "slot_rejected_by_n8n",
+        "appointment_in_progress",
+        "horario_invalido",
+        "ocupado",
+        "sem_horario",
+      ].includes(code)) {
+        setSelectedSlot(null);
+        showToast(message, "error");
+        await loadAgenda();
+      } else {
+        setFormError(message);
+      }
+    } finally {
+      submissionLock.current = false;
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -303,7 +419,7 @@ export default function Home() {
         </nav>
         <div className="lara-sidebar"><div className="lara-icon"><Sparkles size={17} /></div><div><strong>Lara IA</strong><small>Atendimento automatizado</small></div></div>
       </aside>
-      {mobileNavOpen && <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" />}
+      {mobileNavOpen ? <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" /> : null}
 
       <main className="main-content">
         <header className="topbar">
@@ -312,18 +428,19 @@ export default function Home() {
             <div><h1>Agenda</h1><p>Gerencie os horários e atendimentos da CEDIPI</p></div>
           </div>
           <div className="header-actions">
-            <button className="button button-secondary" onClick={() => setSelectedDate(new Date(2026, 7, 28, 12))}><CalendarDays size={17} /> Hoje</button>
-            <button className="button button-primary" onClick={() => setNewModal({ open: true })}><Plus size={18} /> Novo agendamento</button>
+            <button className="button button-secondary" onClick={() => setSelectedDate(todayInSaoPaulo())}><CalendarDays size={17} /> Hoje</button>
+            <button className="button button-primary" onClick={openFirstAvailableSlot} disabled={!selectedDoctor || agendaLoading}><Plus size={18} /> Novo agendamento</button>
           </div>
         </header>
 
         <section className="doctor-selector" aria-label="Selecionar médico">
-          {doctors.map((doctor) => (
-            <button key={doctor.id} className={doctor.id === selectedDoctorId ? "doctor-tab selected" : "doctor-tab"} onClick={() => selectDoctor(doctor.id)}>
-              <span className="doctor-avatar">{doctor.initials}</span><span><strong>{doctor.name}</strong><small>Ultrassonografia</small></span>
-              {doctor.id === selectedDoctorId && <Check className="doctor-check" size={16} />}
+          {doctorsLoading ? <div className="inline-state"><RefreshCw className="spin" size={16} /> Carregando médicos...</div> : doctors.map((doctor) => (
+            <button key={doctor.id} className={doctor.id === selectedDoctorId ? "doctor-tab selected" : "doctor-tab"} onClick={() => setSelectedDoctorId(doctor.id)}>
+              <span className="doctor-avatar">{doctorInitials(doctor.name)}</span><span><strong>{doctor.name}</strong><small>Ultrassonografia</small></span>
+              {doctor.id === selectedDoctorId ? <Check className="doctor-check" size={16} /> : null}
             </button>
           ))}
+          {!doctorsLoading && doctors.length === 0 ? <div className="inline-state error-state">Nenhum médico disponível.</div> : null}
         </section>
 
         <section className="lara-banner">
@@ -336,7 +453,7 @@ export default function Home() {
           <div className="summary-card"><span>Agendamentos hoje</span><strong>{dayAppointments.length}</strong></div>
           <div className="summary-card"><span>Confirmados</span><strong className="text-teal">{confirmedCount}</strong></div>
           <div className="summary-card"><span>Aguardando</span><strong className="text-amber">{pendingCount}</strong></div>
-          <div className="summary-card"><span>Horários disponíveis</span><strong className="text-blue">{availableCount}</strong></div>
+          <div className="summary-card"><span>Horários disponíveis</span><strong className="text-blue">{availableSlots.length}</strong></div>
         </section>
 
         <section className="calendar-panel">
@@ -345,7 +462,7 @@ export default function Home() {
               <button className="icon-button" onClick={() => setSelectedDate(addDays(selectedDate, viewMode === "day" ? -1 : -7))} aria-label="Data anterior"><ChevronLeft size={19} /></button>
               <div className="date-title"><CalendarDays size={18} /><strong>{capitalize(displayDate(selectedDate))}</strong></div>
               <button className="icon-button" onClick={() => setSelectedDate(addDays(selectedDate, viewMode === "day" ? 1 : 7))} aria-label="Próxima data"><ChevronRight size={19} /></button>
-              <button className="today-link" onClick={() => setSelectedDate(new Date(2026, 7, 28, 12))}>Hoje</button>
+              <button className="today-link" onClick={() => setSelectedDate(todayInSaoPaulo())}>Hoje</button>
             </div>
             <div className="view-toggle" aria-label="Modo de visualização">
               <button className={viewMode === "day" ? "active" : ""} onClick={() => setViewMode("day")}>Dia</button>
@@ -353,42 +470,48 @@ export default function Home() {
             </div>
           </div>
 
-          {viewMode === "day" ? (
+          {agendaLoading ? (
+            <div className="agenda-state"><RefreshCw className="spin" size={19} /> Carregando agenda...</div>
+          ) : agendaError ? (
+            <div className="agenda-state error-state"><AlertTriangle size={19} /><span>{agendaError}</span><button className="button button-secondary" onClick={() => void (selectedDoctor ? loadAgenda() : loadDoctors())}>Tentar novamente</button></div>
+          ) : !selectedDoctor ? (
+            <div className="agenda-state">Selecione um médico para consultar a agenda.</div>
+          ) : viewMode === "day" ? (
             <div className="day-view">
-              <div className="agenda-head"><span>HORÁRIO</span><div><span className="head-avatar">{selectedDoctor.initials}</span><span><strong>{selectedDoctor.name}</strong><small>Agenda do dia</small></span></div><span>ATENDIMENTO</span></div>
-              <div className="time-grid">
-                {slotTimes.map((time) => {
-                  const appointment = dayAppointments.find((item) => item.time === time); const working = isWithinSchedule(selectedDoctor, selectedDate, time);
-                  return (
-                    <div className={`time-row ${working ? "working" : "off-hours"}`} key={time}>
-                      <time>{time}</time><div className="time-line" />
-                      {appointment ? (
-                        <button className="appointment-card" onClick={() => setSelectedId(appointment.id)}>
-                          <span className="appointment-accent" /><span className="appointment-main"><strong>{appointment.patient}</strong><small>{appointment.exam}</small></span>
-                          <OriginBadge origin={appointment.origin} /><StatusBadge status={appointment.status} /><ChevronRight className="appointment-chevron" size={17} />
+              <div className="agenda-head"><span>HORÁRIO</span><div><span className="head-avatar">{doctorInitials(selectedDoctor.name)}</span><span><strong>{selectedDoctor.name}</strong><small>Agenda do dia</small></span></div><span>ATENDIMENTO</span></div>
+              {timelineItems.length > 0 ? (
+                <div className="time-grid">
+                  {timelineItems.map((item) => (
+                    <div className="time-row working" key={`${item.type}-${item.id}`}>
+                      <time>{item.time}</time><div className="time-line" />
+                      {item.type === "appointment" ? (
+                        <button className="appointment-card" onClick={() => setSelectedId(item.appointment.id)}>
+                          <span className="appointment-accent" /><span className="appointment-main"><strong>{item.appointment.patientName}</strong><small>{item.appointment.examName || "Exame não informado"}</small></span>
+                          <OriginBadge source={item.appointment.source} /><StatusBadge status={item.appointment.status} /><ChevronRight className="appointment-chevron" size={17} />
                         </button>
-                      ) : working ? (
-                        <button className="available-slot" onClick={() => setNewModal({ open: true, time })}><Plus size={14} /> Disponível</button>
-                      ) : isOffHoursLabel(selectedDoctor, selectedDate, time) ? (
-                        <span className="off-hours-label"><Clock3 size={14} /> Fora do horário de atendimento</span>
-                      ) : null}
+                      ) : (
+                        <button className="available-slot" onClick={() => { setFormError(null); setSelectedSlot(item.slot); }}><Plus size={14} /> Disponível</button>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="agenda-state empty-state"><CalendarDays size={20} /><strong>Sem horários para esta data</strong><span>Selecione outro dia ou médico para consultar a agenda.</span></div>
+              )}
             </div>
           ) : (
             <div className="week-view">
               {weekDays(selectedDate).map((day) => {
-                const key = toDateKey(day); const dayEvents = appointments.filter((item) => item.doctorId === selectedDoctorId && item.date === key);
-                const ranges = selectedDoctor.schedule[day.getDay()] ?? [];
+                const key = toDateKey(day);
+                const dayEvents = appointmentViews.filter((item) => item.doctor.id === selectedDoctorId && item.date === key);
+                const daySlots = availableSlotsForAppointments(availabilityByDate[key] ?? [], appointments);
                 return (
                   <button className={`week-day ${key === dateKey ? "today" : ""}`} key={key} onClick={() => { setSelectedDate(day); setViewMode("day"); }}>
                     <div className="week-day-head"><span>{day.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")}</span><strong>{day.getDate()}</strong></div>
-                    <div className="week-hours">{ranges.length ? ranges.map(([start, end]) => <span key={start}>{start}–{end}</span>) : <em>Sem atendimento</em>}</div>
+                    <div className="week-hours">{daySlots.length ? daySlots.map((slot) => <span key={slot.id}>{slotLocalParts(slot).time}</span>) : <em>Sem horários</em>}</div>
                     <div className="week-events">
-                      {dayEvents.map((item) => <span className="week-event" key={item.id}><time>{item.time}</time><strong>{item.patient}</strong><small>{item.exam}</small></span>)}
-                      {!dayEvents.length && ranges.length > 0 && <span className="week-empty">Horários disponíveis</span>}
+                      {dayEvents.map((item) => <span className="week-event" key={item.id}><time>{item.time}</time><strong>{item.patientName}</strong><small>{item.examName || "Exame não informado"}</small></span>)}
+                      {!dayEvents.length && daySlots.length > 0 ? <span className="week-empty">Horários disponíveis</span> : null}
                     </div>
                   </button>
                 );
@@ -398,65 +521,52 @@ export default function Home() {
         </section>
       </main>
 
-      {selectedAppointment && (
+      {selectedAppointment ? (
         <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Detalhes do agendamento">
           <button className="drawer-backdrop" onClick={() => setSelectedId(null)} aria-label="Fechar detalhes" />
           <aside className="details-drawer">
-            <div className="drawer-header"><div><span>DETALHES DO AGENDAMENTO</span><h2>{selectedAppointment.patient}</h2></div><button className="icon-button" onClick={() => setSelectedId(null)} aria-label="Fechar"><X size={20} /></button></div>
+            <div className="drawer-header"><div><span>DETALHES DO AGENDAMENTO</span><h2>{selectedAppointment.patientName}</h2></div><button className="icon-button" onClick={() => setSelectedId(null)} aria-label="Fechar"><X size={20} /></button></div>
             <div className="drawer-body">
-              <div className="exam-highlight"><div className="exam-icon"><FileText size={19} /></div><div><span>EXAME</span><strong>{selectedAppointment.exam}</strong></div></div>
+              <div className="exam-highlight"><div className="exam-icon"><FileText size={19} /></div><div><span>EXAME</span><strong>{selectedAppointment.examName || "Exame não informado"}</strong></div></div>
               <div className="detail-section"><h3>Data e atendimento</h3><div className="detail-grid">
                 <div><CalendarDays size={17} /><span><small>Data</small><strong>{displayDate(fromDateKey(selectedAppointment.date), true)}</strong></span></div>
                 <div><Clock3 size={17} /><span><small>Horário</small><strong>{selectedAppointment.time} às {selectedAppointment.endTime}</strong></span></div>
-                <div><Stethoscope size={17} /><span><small>Médico</small><strong>{doctors.find((item) => item.id === selectedAppointment.doctorId)?.name}</strong></span></div>
+                <div><Stethoscope size={17} /><span><small>Médico</small><strong>{selectedAppointment.doctor.name}</strong></span></div>
                 <div><MessageCircle size={17} /><span><small>Telefone</small><strong>{selectedAppointment.phone}</strong></span></div>
               </div></div>
-              <div className="detail-section detail-pair"><div><h3>Origem</h3><OriginBadge origin={selectedAppointment.origin} /></div><div><h3>Status</h3><StatusBadge status={selectedAppointment.status} /></div></div>
+              <div className="detail-section detail-pair"><div><h3>Origem</h3><OriginBadge source={selectedAppointment.source} /></div><div><h3>Status</h3><StatusBadge status={selectedAppointment.status} /></div></div>
               <div className="detail-section"><h3>Observações</h3><p className="notes-box">{selectedAppointment.notes || "Nenhuma observação registrada."}</p></div>
             </div>
-            <div className="drawer-actions"><button className="button button-secondary full" onClick={() => setRescheduleOpen(true)}><CalendarDays size={17} /> Remarcar</button><button className="button button-danger full" onClick={() => setCancelOpen(true)}><XCircle size={17} /> Cancelar agendamento</button><button className="text-button" onClick={() => setSelectedId(null)}>Fechar</button></div>
+            <div className="drawer-actions"><button className="text-button" onClick={() => setSelectedId(null)}>Fechar</button></div>
           </aside>
         </div>
-      )}
+      ) : null}
 
-      {newModal.open && (
+      {selectedSlot ? (
         <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="new-title">
-          <button className="modal-backdrop" onClick={() => setNewModal({ open: false })} aria-label="Fechar modal" />
+          <button className="modal-backdrop" onClick={() => { if (!submitting) setSelectedSlot(null); }} aria-label="Fechar modal" />
           <div className="modal-card modal-large">
-            <div className="modal-header"><div className="modal-title-icon"><CalendarDays size={20} /></div><div><h2 id="new-title">Novo agendamento</h2><p>Preencha os dados para reservar o horário.</p></div><button className="icon-button" onClick={() => setNewModal({ open: false })} aria-label="Fechar"><X size={20} /></button></div>
+            <div className="modal-header"><div className="modal-title-icon"><CalendarDays size={20} /></div><div><h2 id="new-title">Novo agendamento</h2><p>Preencha os dados para reservar o horário.</p></div><button className="icon-button" onClick={() => setSelectedSlot(null)} aria-label="Fechar" disabled={submitting}><X size={20} /></button></div>
             <form onSubmit={createAppointment}>
-              <div className="form-grid">
-                <label className="field span-2"><span>Paciente</span><div className="input-wrap"><UserRound size={17} /><input name="patient" placeholder="Nome completo do paciente" required autoFocus /></div></label>
-                <label className="field span-2"><span>Telefone</span><div className="input-wrap"><MessageCircle size={17} /><input name="phone" placeholder="(00) 00000-0000" required /></div></label>
-                <label className="field span-4"><span>Exame</span><select name="exam" required defaultValue=""><option value="" disabled>Selecione o exame</option>{exams.map((exam) => <option key={exam}>{exam}</option>)}</select></label>
-                <label className="field span-2"><span>Médico</span><select name="doctor" defaultValue={selectedDoctorId}>{doctors.map((doctor) => <option value={doctor.id} key={doctor.id}>{doctor.name}</option>)}</select></label>
-                <label className="field span-1"><span>Data</span><input type="date" name="date" defaultValue={dateKey} required /></label>
-                <label className="field span-1"><span>Horário</span><select name="time" defaultValue={newModal.time ?? availableTimes[0] ?? "09:00"}>{slotTimes.map((time) => <option key={time}>{time}</option>)}</select></label>
-                <label className="field span-4"><span>Observações <small>(opcional)</small></span><textarea name="notes" placeholder="Orientações ou informações importantes" rows={3} /></label>
+              <div className="selected-slot-summary" aria-label="Horário selecionado">
+                <span><small>Médico</small><strong>{selectedSlot.doctor.name}</strong></span>
+                <span><small>Data</small><strong>{displayDate(fromDateKey(slotLocalParts(selectedSlot).date), true)}</strong></span>
+                <span><small>Horário</small><strong>{slotLocalParts(selectedSlot).time} às {slotLocalParts(selectedSlot).endTime}</strong></span>
               </div>
-              <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setNewModal({ open: false })}>Cancelar</button><button type="submit" className="button button-primary"><Check size={18} /> Confirmar agendamento</button></div>
+              <div className="form-grid">
+                <label className="field span-2"><span>Paciente</span><div className="input-wrap"><UserRound size={17} /><input name="patient" placeholder="Nome completo do paciente" required autoFocus disabled={submitting} /></div></label>
+                <label className="field span-2"><span>Telefone</span><div className="input-wrap"><MessageCircle size={17} /><input name="phone" inputMode="tel" placeholder="(00) 00000-0000" required disabled={submitting} /></div></label>
+                <label className="field span-2"><span>E-mail <small>(opcional)</small></span><input name="email" type="email" placeholder="paciente@exemplo.com" disabled={submitting} /></label>
+                <label className="field span-2"><span>Exame</span><input name="exam" placeholder="Nome do exame" required disabled={submitting} /></label>
+                {formError ? <p className="form-error span-4" role="alert">{formError}</p> : null}
+              </div>
+              <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setSelectedSlot(null)} disabled={submitting}>Cancelar</button><button type="submit" className="button button-primary" disabled={submitting}>{submitting ? <RefreshCw className="spin" size={17} /> : <Check size={18} />}{submitting ? "Confirmando..." : "Confirmar agendamento"}</button></div>
             </form>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {rescheduleOpen && selectedAppointment && (
-        <div className="modal-layer modal-top" role="dialog" aria-modal="true" aria-labelledby="reschedule-title">
-          <button className="modal-backdrop" onClick={() => setRescheduleOpen(false)} aria-label="Fechar modal" />
-          <div className="modal-card modal-compact">
-            <div className="modal-header"><div className="modal-title-icon"><CalendarDays size={20} /></div><div><h2 id="reschedule-title">Remarcar atendimento</h2><p>Escolha uma nova data e horário.</p></div><button className="icon-button" onClick={() => setRescheduleOpen(false)} aria-label="Fechar"><X size={20} /></button></div>
-            <form onSubmit={rescheduleAppointment}><div className="patient-mini"><CircleUserRound size={20} /><span><strong>{selectedAppointment.patient}</strong><small>{selectedAppointment.exam}</small></span></div><div className="form-grid"><label className="field span-2"><span>Nova data</span><input type="date" name="date" defaultValue={selectedAppointment.date} required /></label><label className="field span-2"><span>Novo horário</span><select name="time" defaultValue={selectedAppointment.time}>{slotTimes.map((time) => <option key={time}>{time}</option>)}</select></label></div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setRescheduleOpen(false)}>Voltar</button><button type="submit" className="button button-primary">Confirmar novo horário</button></div></form>
-          </div>
-        </div>
-      )}
-
-      {cancelOpen && selectedAppointment && (
-        <div className="modal-layer modal-top" role="alertdialog" aria-modal="true" aria-labelledby="cancel-title">
-          <button className="modal-backdrop" onClick={() => setCancelOpen(false)} aria-label="Fechar confirmação" />
-          <div className="modal-card confirm-card"><div className="danger-icon"><XCircle size={25} /></div><h2 id="cancel-title">Cancelar agendamento?</h2><p>O atendimento de <strong>{selectedAppointment.patient}</strong> será removido e esse horário ficará disponível novamente.</p><div className="modal-actions"><button className="button button-secondary" onClick={() => setCancelOpen(false)}>Voltar</button><button className="button button-danger solid" onClick={cancelAppointment}>Cancelar agendamento</button></div></div>
-        </div>
-      )}
-      {toast && <div className="toast" role="status"><span><Check size={16} /></span>{toast}</div>}
+      {toast ? <div className={`toast toast-${toast.kind}`} role="status"><span>{toast.kind === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}</span>{toast.message}</div> : null}
     </div>
   );
 }
