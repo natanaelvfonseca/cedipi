@@ -99,7 +99,7 @@ test("endpoint sem configuração retorna erro claro", async () => {
   assert.deepEqual(response.body, { ok: false, error: "n8n_not_configured" });
 });
 
-test("aplicação não oferece POST para criar appointments", async () => {
+test("POST de appointments rejeita payload inválido antes de acessar serviços", async () => {
   const server = createApp().listen(0, "127.0.0.1");
   try {
     await new Promise((resolve) => server.once("listening", resolve));
@@ -109,7 +109,7 @@ test("aplicação não oferece POST para criar appointments", async () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ doctorId: "anything" }),
     });
-    assert.equal(response.status, 404);
+    assert.equal(response.status, 400);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => {
       if (error) reject(error);

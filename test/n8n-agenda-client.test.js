@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildAppointmentPayload,
   createN8nAgendaClient,
   N8nAgendaError,
   normalizeAvailabilityResponse,
+  normalizeAppointmentResponse,
 } from "../server/n8n-agenda-client.js";
 
 const input = {
@@ -221,4 +223,56 @@ test("falha de configuração usa erro sanitizado", () => {
     if (previousSecret === undefined) delete process.env.N8N_AGENDA_WEBHOOK_SECRET;
     else process.env.N8N_AGENDA_WEBHOOK_SECRET = previousSecret;
   }
+});
+
+test("envia contrato de agendamento com segredo somente no header", async () => {
+  let request;
+  const client = createN8nAgendaClient({
+    webhookUrl: "https://n8n.example/webhook/agendas",
+    webhookSecret: "private-secret",
+    fetchImpl: async (_url, options) => {
+      request = options;
+      return Response.json({ status: "agendado", googleEventId: "event-1" });
+    },
+  });
+  const appointmentInput = {
+    doctor: "Danilo",
+    doctorId: "a2bda31d-618b-49f1-9aa5-b1bab002fcbd",
+    slotId: "11111111-2222-3333-4444-555555555555",
+    start: "2026-09-09T12:00:00.000Z",
+    name: "Paciente",
+    phone: "5547999999999",
+    exam: "Exame",
+  };
+
+  await client.createAppointment(appointmentInput);
+
+  assert.deepEqual(JSON.parse(request.body), buildAppointmentPayload(appointmentInput));
+  assert.equal(request.headers["x-cedipi-agenda-secret"], "private-secret");
+  assert.equal(request.body.includes("private-secret"), false);
+});
+
+test("normaliza agendamento e rejeita status desconhecido", () => {
+  assert.deepEqual(normalizeAppointmentResponse([{
+    status: "agendado",
+    googleEventId: "event-1",
+    googleCalendarId: "calendar-1",
+    start: "2026-09-09T09:00:00-03:00",
+    end: "2026-09-09T09:20:00-03:00",
+    response: "Agendado",
+  }]), {
+    status: "agendado",
+    googleEventId: "event-1",
+    googleCalendarId: "calendar-1",
+    slotId: null,
+    doctorId: null,
+    source: null,
+    start: "2026-09-09T09:00:00-03:00",
+    end: "2026-09-09T09:20:00-03:00",
+    message: "Agendado",
+  });
+  assert.throws(
+    () => normalizeAppointmentResponse({ status: "unexpected" }),
+    (error) => error.code === "n8n_invalid_response",
+  );
 });
