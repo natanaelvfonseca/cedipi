@@ -2,7 +2,7 @@
 
 import {
   AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3,
-  FileText, Menu, MessageCircle, Plus, RefreshCw, Settings, Sparkles, Stethoscope,
+  FileText, Menu, MessageCircle, MessagesSquare, Plus, RefreshCw, Settings, Sparkles, Stethoscope,
   UserRound, UsersRound, X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,11 +28,14 @@ import {
 } from "./agenda-model";
 import { getWhatsAppPresentation, type WhatsAppStatus } from "./whatsapp-status";
 import { LaraControl } from "./lara-control";
+import { Conversations } from "./conversations";
 
 type ViewMode = "day" | "week";
+type AppView = "agenda" | "conversations";
 
 const navItems = [
-  { label: "Agenda", icon: CalendarDays, active: true },
+  { id: "agenda" as const, label: "Agenda", icon: CalendarDays },
+  { id: "conversations" as const, label: "Conversas", icon: MessagesSquare },
   { label: "Pacientes", icon: UsersRound },
   { label: "Médicos", icon: Stethoscope },
   { label: "Configurações", icon: Settings },
@@ -234,6 +237,7 @@ function WhatsAppConnection() {
 }
 
 export default function Home() {
+  const [activeView, setActiveView] = useState<AppView>("agenda");
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(todayInSaoPaulo);
@@ -415,7 +419,8 @@ export default function Home() {
           <p>MENU</p>
           {navItems.map((item) => {
             const Icon = item.icon;
-            return <button className={item.active ? "nav-item active" : "nav-item"} key={item.label}><Icon size={19} /><span>{item.label}</span></button>;
+            const itemId = "id" in item ? item.id : null;
+            return <button className={itemId === activeView ? "nav-item active" : "nav-item"} key={item.label} onClick={() => { if (itemId) setActiveView(itemId); setMobileNavOpen(false); }}><Icon size={19} /><span>{item.label}</span></button>;
           })}
         </nav>
         <div className="lara-sidebar"><div className="lara-icon"><Sparkles size={17} /></div><div><strong>Lara IA</strong><small>Atendimento automatizado</small></div></div>
@@ -423,6 +428,9 @@ export default function Home() {
       {mobileNavOpen ? <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" /> : null}
 
       <main className="main-content">
+        {activeView === "conversations" ? (
+          <Conversations notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
+        ) : <>
         <header className="topbar">
           <div className="title-wrap">
             <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu"><Menu size={21} /></button>
@@ -522,9 +530,10 @@ export default function Home() {
             </div>
           )}
         </section>
+        </>}
       </main>
 
-      {selectedAppointment ? (
+      {activeView === "agenda" && selectedAppointment ? (
         <div className="drawer-layer" role="dialog" aria-modal="true" aria-label="Detalhes do agendamento">
           <button className="drawer-backdrop" onClick={() => setSelectedId(null)} aria-label="Fechar detalhes" />
           <aside className="details-drawer">
@@ -545,7 +554,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      {selectedSlot ? (
+      {activeView === "agenda" && selectedSlot ? (
         <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="new-title">
           <button className="modal-backdrop" onClick={() => { if (!submitting) setSelectedSlot(null); }} aria-label="Fechar modal" />
           <div className="modal-card modal-large">

@@ -6,6 +6,7 @@ export type AiControlState = {
 };
 
 export type AiControlAction =
+  | { type: "reset" }
   | { type: "load_started" }
   | { type: "load_succeeded"; enabled: boolean }
   | { type: "load_failed" }
@@ -25,6 +26,8 @@ export function aiControlReducer(
   action: AiControlAction,
 ): AiControlState {
   switch (action.type) {
+    case "reset":
+      return initialAiControlState;
     case "load_started":
       return { ...state, loading: true, error: null };
     case "load_succeeded":

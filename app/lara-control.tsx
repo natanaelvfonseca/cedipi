@@ -10,9 +10,10 @@ import {
 
 type LaraControlProps = {
   notify: (message: string, kind: "success" | "error") => void;
+  compact?: boolean;
 };
 
-export function LaraControl({ notify }: LaraControlProps) {
+export function LaraControl({ notify, compact = false }: LaraControlProps) {
   const [state, dispatch] = useReducer(aiControlReducer, initialAiControlState);
   const saveLock = useRef(false);
 
@@ -58,19 +59,19 @@ export function LaraControl({ notify }: LaraControlProps) {
   const unavailable = state.globalEnabled === null;
 
   return (
-    <section className={`lara-control-panel ${enabled ? "lara-control-enabled" : ""} ${unavailable ? "lara-control-unavailable" : ""}`} aria-labelledby="lara-control-title">
+    <section className={`lara-control-panel ${compact ? "lara-control-compact" : ""} ${enabled ? "lara-control-enabled" : ""} ${unavailable ? "lara-control-unavailable" : ""}`} aria-labelledby={compact ? "lara-global-control-title" : "lara-control-title"}>
       <div className="lara-control-heading">
         <span className="lara-control-icon"><Sparkles size={18} /></span>
         <div>
-          <h2 id="lara-control-title">Controle da Lara</h2>
-          <p>Ative ou pause o atendimento automático por IA.</p>
+          <h2 id={compact ? "lara-global-control-title" : "lara-control-title"}>{compact ? "Lara IA" : "Controle da Lara"}</h2>
+          <p>{compact ? "Controle global" : "Ative ou pause o atendimento automático por IA."}</p>
         </div>
       </div>
-      <div className="lara-control-copy">
+      {!compact ? <div className="lara-control-copy">
         <strong>Lara <span>Atendimento automático do WhatsApp</span></strong>
         <p>{state.loading ? "Consultando o status da IA..." : presentation.description}</p>
         {state.error === "save" ? <small role="alert">Não foi possível alterar o status da Lara.</small> : null}
-      </div>
+      </div> : null}
       <div className="lara-control-action">
         <span className={`lara-control-status ${enabled ? "active" : unavailable ? "unknown" : "paused"}`}>
           <i />{state.loading ? "Consultando" : presentation.status}
