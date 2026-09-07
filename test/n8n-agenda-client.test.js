@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createN8nAgendaClient,
   N8nAgendaError,
+  normalizeAvailabilityResponse,
 } from "../server/n8n-agenda-client.js";
 
 const input = {
@@ -11,6 +12,29 @@ const input = {
   doctorId: "8418eb24-bb4a-45e6-89ec-5cfaf22cf446",
   period: "",
   after: "",
+};
+
+const currentWorkflowResponse = {
+  ok: true,
+  status: "disponivel",
+  medico: "Danilo",
+  data: "2026-09-09",
+  horario: "09:00",
+  start: "2026-09-09T09:00:00-03:00",
+  end: "2026-09-09T09:20:00-03:00",
+  response: "Próximo horário disponível: 09/09/2026 às 09:00 com Dr. Danilo.",
+};
+
+const normalizedCurrentWorkflowResponse = {
+  available: true,
+  slots: [{
+    doctor: "Danilo",
+    date: "2026-09-09",
+    time: "09:00",
+    start: "2026-09-09T09:00:00-03:00",
+    end: "2026-09-09T09:20:00-03:00",
+  }],
+  message: "Próximo horário disponível: 09/09/2026 às 09:00 com Dr. Danilo.",
 };
 
 test("envia o contrato atual e os aliases antigos sem incluir o segredo no payload", async () => {
@@ -123,6 +147,45 @@ test("normaliza resposta válida do workflow", async () => {
     slots: ["14:00", "14:20"],
     message: "Horários encontrados",
   });
+});
+
+test("normaliza disponibilidade atual do AGENDAS dentro de array", () => {
+  assert.deepEqual(
+    normalizeAvailabilityResponse([currentWorkflowResponse]),
+    normalizedCurrentWorkflowResponse,
+  );
+});
+
+test("normaliza disponibilidade atual do AGENDAS como objeto direto", () => {
+  assert.deepEqual(
+    normalizeAvailabilityResponse(currentWorkflowResponse),
+    normalizedCurrentWorkflowResponse,
+  );
+});
+
+test("normaliza sem_horario e preserva response como message", () => {
+  assert.deepEqual(normalizeAvailabilityResponse([{
+    ok: true,
+    status: "sem_horario",
+    medico: "Danilo",
+    data: "2026-09-09",
+    response: "Não há horários disponíveis.",
+  }]), {
+    available: false,
+    slots: [],
+    message: "Não há horários disponíveis.",
+  });
+});
+
+test("resposta desconhecida não vira indisponibilidade silenciosa", () => {
+  assert.throws(
+    () => normalizeAvailabilityResponse([{ ok: true, status: "formato_novo" }]),
+    (error) => {
+      assert.equal(error.code, "n8n_invalid_response");
+      assert.equal(error.status, 502);
+      return true;
+    },
+  );
 });
 
 test("remove o segredo caso o serviço externo tente devolvê-lo", async () => {

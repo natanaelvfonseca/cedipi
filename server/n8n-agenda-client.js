@@ -53,30 +53,84 @@ function redactSecret(value, secret) {
   return value;
 }
 
+function invalidAvailabilityResponse() {
+  throw new N8nAgendaError("Resposta inválida do webhook de agenda.", {
+    code: "n8n_invalid_response",
+    status: 502,
+  });
+}
+
+function responseMessage(data, secret) {
+  const message = typeof data.response === "string"
+    ? data.response
+    : typeof data.message === "string"
+      ? data.message
+      : typeof data.mensagem === "string"
+        ? data.mensagem
+        : null;
+  return redactSecret(message, secret);
+}
+
+function normalizeCurrentWorkflowResponse(data, secret) {
+  if (data.status === "sem_horario") {
+    return {
+      available: false,
+      slots: [],
+      message: responseMessage(data, secret),
+    };
+  }
+
+  if (data.status !== "disponivel") return null;
+
+  const requiredSlotFields = ["medico", "data", "horario", "start", "end"];
+  if (requiredSlotFields.some((field) => (
+    typeof data[field] !== "string" || data[field].length === 0
+  ))) {
+    invalidAvailabilityResponse();
+  }
+
+  return {
+    available: true,
+    slots: [redactSecret({
+      doctor: data.medico,
+      date: data.data,
+      time: data.horario,
+      start: data.start,
+      end: data.end,
+    }, secret)],
+    message: responseMessage(data, secret),
+  };
+}
+
 export function normalizeAvailabilityResponse(payload, secret = "") {
   const body = Array.isArray(payload) ? payload[0] : payload;
   const data = body?.data && typeof body.data === "object" ? body.data : body;
-  const slots = data?.slots ?? data?.availability ?? data?.horarios ?? [];
 
-  if (!data || typeof data !== "object" || !Array.isArray(slots)) {
-    throw new N8nAgendaError("Resposta inválida do webhook de agenda.", {
-      code: "n8n_invalid_response",
-      status: 502,
-    });
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    invalidAvailabilityResponse();
   }
+
+  const currentWorkflowResponse = normalizeCurrentWorkflowResponse(data, secret);
+  if (currentWorkflowResponse) return currentWorkflowResponse;
+
+  const slots = data.slots ?? data.availability ?? data.horarios;
+  const hasAvailabilityFlag = typeof data.available === "boolean"
+    || typeof data.disponivel === "boolean";
+
+  if (!Array.isArray(slots) && !hasAvailabilityFlag) {
+    invalidAvailabilityResponse();
+  }
+
+  const normalizedSlots = Array.isArray(slots) ? slots : [];
 
   return {
     available: typeof data.available === "boolean"
       ? data.available
       : typeof data.disponivel === "boolean"
         ? data.disponivel
-        : slots.length > 0,
-    slots: redactSecret(slots, secret),
-    message: typeof data.message === "string"
-      ? redactSecret(data.message, secret)
-      : typeof data.mensagem === "string"
-        ? redactSecret(data.mensagem, secret)
-        : null,
+        : normalizedSlots.length > 0,
+    slots: redactSecret(normalizedSlots, secret),
+    message: responseMessage(data, secret),
   };
 }
 

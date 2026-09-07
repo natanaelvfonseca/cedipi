@@ -64,8 +64,9 @@ test("endpoint não expõe segredo em falhas do n8n", async () => {
       upstreamStatus: 401,
     });
   });
+  const logged = [];
   const originalConsoleError = console.error;
-  console.error = () => {};
+  console.error = (...values) => logged.push(values);
   try {
     await handler({ query: { date: "2026-09-09", doctor: "Wagner" } }, response);
   } finally {
@@ -75,6 +76,7 @@ test("endpoint não expõe segredo em falhas do n8n", async () => {
   assert.equal(response.statusCode, 502);
   assert.deepEqual(response.body, { ok: false, error: "n8n_authentication_failed" });
   assert.equal(JSON.stringify(response.body).includes("private-secret"), false);
+  assert.equal(JSON.stringify(logged).includes("private-secret"), false);
 });
 
 test("endpoint sem configuração retorna erro claro", async () => {
