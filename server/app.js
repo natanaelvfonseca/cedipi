@@ -17,6 +17,13 @@ import {
   createGetAiControlHandler,
   createPatchAiControlHandler,
 } from "./ai-control-handlers.js";
+import {
+  createGetConversationAiControlHandler,
+  createListWhatsAppConversationsHandler,
+  createListWhatsAppMessagesHandler,
+  createPatchConversationAiControlHandler,
+  createSendWhatsAppMessageHandler,
+} from "./whatsapp-conversations-handlers.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
@@ -29,6 +36,11 @@ export function createApp() {
   app.get("/api/health/database", createDatabaseHealthHandler());
   app.get("/api/whatsapp/instance", createGetWhatsAppInstanceHandler());
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
+  app.get("/api/whatsapp/conversations", createListWhatsAppConversationsHandler());
+  app.get("/api/whatsapp/conversations/:conversationId/messages", createListWhatsAppMessagesHandler());
+  app.post("/api/whatsapp/conversations/:conversationId/messages", createSendWhatsAppMessageHandler());
+  app.get("/api/whatsapp/conversations/:phone/ai-control", createGetConversationAiControlHandler());
+  app.patch("/api/whatsapp/conversations/:phone/ai-control", createPatchConversationAiControlHandler());
   app.get("/api/doctors", createListDoctorsHandler());
   app.get("/api/scheduling/availability", createListAvailabilityHandler());
   app.get("/api/scheduling/live-availability", createLiveAvailabilityHandler());

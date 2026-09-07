@@ -1,4 +1,5 @@
 const defaultTimeoutMs = 15_000;
+const cedipiInstanceName = "Cedipi";
 
 export class EvolutionApiError extends Error {
   constructor(message, status) {
@@ -46,13 +47,22 @@ export function createEvolutionClient({
   timeoutMs = defaultTimeoutMs,
   fetchImpl = fetch,
 } = {}) {
+  if (instanceName !== cedipiInstanceName) {
+    throw new EvolutionApiError("A instância Evolution configurada é inválida.", 503);
+  }
+
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
 
-  async function request(path) {
+  async function request(path, { method = "GET", payload } = {}) {
     let response;
     try {
       response = await fetchImpl(`${normalizedBaseUrl}${path}`, {
-        headers: { apikey: apiKey },
+        method,
+        headers: {
+          apikey: apiKey,
+          ...(payload === undefined ? {} : { "content-type": "application/json" }),
+        },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
@@ -66,7 +76,11 @@ export function createEvolutionClient({
       );
     }
 
-    return response.json();
+    try {
+      return await response.json();
+    } catch {
+      throw new EvolutionApiError("Evolution API retornou uma resposta inválida.", 502);
+    }
   }
 
   async function getInstance() {
@@ -90,5 +104,33 @@ export function createEvolutionClient({
     return request(`/instance/connect/${encodeURIComponent(routeInstanceName)}`);
   }
 
-  return { getInstance, getConnectionState, getQrCode };
+  async function findChats() {
+    return request(`/chat/findChats/${cedipiInstanceName}`, {
+      method: "POST",
+      payload: {},
+    });
+  }
+
+  async function findMessages(remoteJid) {
+    return request(`/chat/findMessages/${cedipiInstanceName}`, {
+      method: "POST",
+      payload: { where: { key: { remoteJid } } },
+    });
+  }
+
+  async function sendText(number, text) {
+    return request(`/message/sendText/${cedipiInstanceName}`, {
+      method: "POST",
+      payload: { number, text },
+    });
+  }
+
+  return {
+    getInstance,
+    getConnectionState,
+    getQrCode,
+    findChats,
+    findMessages,
+    sendText,
+  };
 }
