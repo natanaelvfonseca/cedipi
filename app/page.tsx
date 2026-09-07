@@ -6,6 +6,7 @@ import {
   UserRound, UsersRound, X, XCircle,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { getWhatsAppPresentation, type WhatsAppStatus } from "./whatsapp-status";
 
 type DoctorId = "danilo" | "wagner" | "deison";
 type Status = "Confirmado" | "Aguardando confirmação" | "Cancelado";
@@ -111,7 +112,6 @@ function StatusBadge({ status }: { status: Status }) {
   return <span className={`status-badge status-${className}`}>{status}</span>;
 }
 
-type WhatsAppStatus = "connected" | "disconnected" | "connecting" | "unknown";
 type WhatsAppInstance = {
   name: string;
   status: WhatsAppStatus;
@@ -188,24 +188,33 @@ function WhatsAppConnection() {
     }
   }
 
-  const labels: Record<WhatsAppStatus, string> = {
-    connected: "WhatsApp conectado",
-    disconnected: "WhatsApp desconectado",
-    connecting: "Conectando...",
-    unknown: "Não foi possível verificar a conexão",
-  };
+  const presentation = getWhatsAppPresentation(instance.status);
 
   return (
     <>
       <div className="whatsapp-control">
-        <div className={`whatsapp-state whatsapp-${instance.status}`}>
-          {instance.status === "unknown" ? <AlertTriangle size={13} /> : <i />}
-          <span><strong>{loading ? "Verificando WhatsApp..." : labels[instance.status]}</strong><small>{instance.profileName || instance.name}{instance.phoneNumber ? ` · ${instance.phoneNumber}` : ""}</small></span>
+        <div className={`whatsapp-state-card whatsapp-${instance.status}`}>
+          <span className="whatsapp-status-icon"><MessageCircle size={18} /></span>
+          <div className="whatsapp-status-copy">
+            <div className="whatsapp-status-title">
+              {instance.status === "unknown" ? <AlertTriangle size={14} /> : <i />}
+              <strong>{loading ? "Verificando WhatsApp..." : presentation.label}</strong>
+            </div>
+            <small>Instância {instance.name}</small>
+            {(instance.profileName || instance.phoneNumber) && (
+              <span className="whatsapp-metadata">
+                {instance.profileName && <span>{instance.profileName}</span>}
+                {instance.phoneNumber && <span>{instance.phoneNumber}</span>}
+              </span>
+            )}
+          </div>
         </div>
-        {instance.status === "disconnected" ? (
+        {presentation.action === "connect" ? (
           <button className="whatsapp-action" onClick={connect} disabled={connecting}>{connecting ? "Gerando QR..." : "Conectar WhatsApp"}</button>
+        ) : presentation.action === "retry" ? (
+          <button className="whatsapp-action whatsapp-retry" onClick={() => void refreshStatus()} disabled={loading}>Tentar novamente</button>
         ) : (
-          <button className="whatsapp-refresh" onClick={() => void refreshStatus()} disabled={loading} aria-label="Atualizar estado do WhatsApp"><RefreshCw size={13} /></button>
+          <button className="whatsapp-refresh" onClick={() => void refreshStatus()} disabled={loading} aria-label={presentation.actionLabel}><RefreshCw size={14} /></button>
         )}
       </div>
       {qrCode && (
@@ -292,7 +301,7 @@ export default function Home() {
             return <button className={item.active ? "nav-item active" : "nav-item"} key={item.label}><Icon size={19} /><span>{item.label}</span></button>;
           })}
         </nav>
-        <div className="lara-sidebar"><div className="lara-icon"><Sparkles size={17} /></div><div><strong>Lara IA</strong><span><i /> Online</span><small>Atendimento automático ativo</small></div></div>
+        <div className="lara-sidebar"><div className="lara-icon"><Sparkles size={17} /></div><div><strong>Lara IA</strong><small>Atendimento automatizado</small></div></div>
       </aside>
       {mobileNavOpen && <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" />}
 
