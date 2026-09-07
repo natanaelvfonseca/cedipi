@@ -11,6 +11,7 @@ import {
   createListAvailabilityHandler,
   createListDoctorsHandler,
 } from "./scheduling-handlers.js";
+import { createLiveAvailabilityHandler } from "./n8n-agenda-handlers.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
@@ -24,6 +25,7 @@ export function createApp() {
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
   app.get("/api/doctors", createListDoctorsHandler());
   app.get("/api/scheduling/availability", createListAvailabilityHandler());
+  app.get("/api/scheduling/live-availability", createLiveAvailabilityHandler());
   app.get("/api/appointments", createListAppointmentsHandler());
   app.use(express.static(distDirectory));
   app.use((request, response, next) => {
