@@ -105,6 +105,22 @@ export function scrollTopAfterPrepend(
   return snapshot.scrollTop + Math.max(0, nextScrollHeight - snapshot.scrollHeight);
 }
 
+export function isNearMessagesEnd(
+  metrics: { scrollHeight: number; scrollTop: number; clientHeight: number },
+  threshold = 120,
+) {
+  return metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight <= threshold;
+}
+
+function messageIdentity(message: WhatsAppMessage) {
+  return message.id ?? [message.timestamp, message.fromMe, message.type, message.text].join("|");
+}
+
+export function hasNewMessages(current: WhatsAppMessage[], incoming: WhatsAppMessage[]) {
+  const identities = new Set(current.map(messageIdentity));
+  return incoming.some((message) => !identities.has(messageIdentity(message)));
+}
+
 export function isCurrentConversationResponse({
   selectedConversationId,
   requestedConversationId,

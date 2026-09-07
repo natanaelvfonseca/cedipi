@@ -5,6 +5,8 @@ import {
   acquireHistoryLoadLock,
   filterConversations,
   formatMessageTime,
+  hasNewMessages,
+  isNearMessagesEnd,
   isSendableMessage,
   isCurrentConversationResponse,
   mergeMessages,
@@ -79,6 +81,17 @@ test("polling adiciona novas sem duplicar ou remover histórico antigo", () => {
 
 test("prepend preserva a posição visual do scroll", () => {
   assert.equal(scrollTopAfterPrepend({ scrollHeight: 1200, scrollTop: 80 }, 2600), 1480);
+});
+
+test("detecta proximidade do final com threshold estável", () => {
+  assert.equal(isNearMessagesEnd({ scrollHeight: 1000, scrollTop: 300, clientHeight: 600 }), true);
+  assert.equal(isNearMessagesEnd({ scrollHeight: 1000, scrollTop: 279, clientHeight: 600 }), false);
+});
+
+test("polling distingue mensagem nova de atualização de status", () => {
+  const current = [{ id: "1", timestamp: "2026-09-07T12:00:00Z", fromMe: true, type: "text", text: "Oi" }];
+  assert.equal(hasNewMessages(current, [{ ...current[0], status: "READ" }]), false);
+  assert.equal(hasNewMessages(current, [{ ...current[0] }, { id: "2", timestamp: "2026-09-07T12:01:00Z", fromMe: false, type: "text", text: "Olá" }]), true);
 });
 
 test("lock impede duas cargas simultâneas do histórico", () => {

@@ -46,6 +46,8 @@ import {
   messagesPollingMs,
   isSendableMessage,
   isCurrentConversationResponse,
+  hasNewMessages,
+  isNearMessagesEnd,
   sortMessages,
   scrollTopAfterPrepend,
   startControlledPolling,
@@ -235,7 +237,8 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
   const aiSaveLock = useRef(false);
   const selectedIdRef = useRef<string | null>(null);
   const messagesPane = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScroll = useRef(true);
+  const messagesRef = useRef<WhatsAppMessage[]>([]);
+  const scrollToBottomAfterRender = useRef(false);
   const prependScrollSnapshot = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
 
   selectedIdRef.current = selectedId;
@@ -290,7 +293,14 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
         currentVersion: messagesRequestVersion.current,
         aborted: signal?.aborted,
       })) return;
-      setMessages((current) => initial ? sortMessages(page.messages) : mergeMessages(current, page.messages));
+      const current = messagesRef.current;
+      const pane = messagesPane.current;
+      const shouldFollow = !initial && hasNewMessages(current, page.messages)
+        && !!pane && isNearMessagesEnd(pane);
+      const next = initial ? sortMessages(page.messages) : mergeMessages(current, page.messages);
+      scrollToBottomAfterRender.current = initial || shouldFollow;
+      messagesRef.current = next;
+      setMessages(next);
       if (initial) setMessagesPagination(page.pagination);
       setMessagesError(false);
     } catch (error) {
@@ -323,8 +333,10 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
       })) return;
       const pane = messagesPane.current;
       if (pane) prependScrollSnapshot.current = { scrollHeight: pane.scrollHeight, scrollTop: pane.scrollTop };
-      shouldAutoScroll.current = false;
-      setMessages((current) => mergeMessages(page.messages, current));
+      scrollToBottomAfterRender.current = false;
+      const next = mergeMessages(page.messages, messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
       setMessagesPagination(page.pagination);
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")
@@ -378,6 +390,7 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
 
   useEffect(() => {
     dispatchIndividualControl({ type: "reset" });
+    messagesRef.current = [];
     setMessages([]);
     setMessagesPagination({ hasMore: false, nextCursor: null });
     setMessagesError(false);
@@ -389,7 +402,7 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
     olderMessagesRequestVersion.current += 1;
     prependScrollSnapshot.current = null;
     setSendError(false);
-    shouldAutoScroll.current = true;
+    scrollToBottomAfterRender.current = false;
     if (!selectedConversation) return undefined;
 
     const controller = new AbortController();
@@ -414,20 +427,19 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
     if (!snapshot || !pane) return;
     pane.scrollTop = scrollTopAfterPrepend(snapshot, pane.scrollHeight);
     prependScrollSnapshot.current = null;
+    scrollToBottomAfterRender.current = false;
   }, [messages]);
 
-  useEffect(() => {
-    if (!shouldAutoScroll.current || !messagesPane.current) return;
-    const frame = window.requestAnimationFrame(() => {
-      if (messagesPane.current) messagesPane.current.scrollTop = messagesPane.current.scrollHeight;
-    });
-    return () => window.cancelAnimationFrame(frame);
+  useLayoutEffect(() => {
+    const pane = messagesPane.current;
+    if (!scrollToBottomAfterRender.current || !pane || prependScrollSnapshot.current) return;
+    pane.scrollTop = pane.scrollHeight;
+    scrollToBottomAfterRender.current = false;
   }, [messages]);
 
   function trackScroll() {
     const pane = messagesPane.current;
     if (!pane) return;
-    shouldAutoScroll.current = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 100;
     if (shouldLoadOlderHistory(pane.scrollTop, messagesPagination.hasMore)) void loadOlderMessages();
   }
 
@@ -455,8 +467,10 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
     setSendError(false);
     try {
       const sent = await sendWhatsAppMessage(selectedConversation.id, text);
-      shouldAutoScroll.current = true;
-      setMessages((current) => mergeMessages(current, [sent]));
+      scrollToBottomAfterRender.current = true;
+      const next = mergeMessages(messagesRef.current, [sent]);
+      messagesRef.current = next;
+      setMessages(next);
       setDraft("");
       await Promise.allSettled([
         loadIndividualControl(selectedConversation, undefined, true),
@@ -481,7 +495,7 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
   const individualUnavailable = individualControl.globalEnabled === null;
 
   return (
-    <>
+    <div className="conversations-view">
       <header className="topbar conversations-topbar">
         <div className="title-wrap">
           <button className="mobile-menu" onClick={openMobileMenu} aria-label="Abrir menu"><MessageCircle size={21} /></button>
@@ -523,7 +537,7 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
                 </div>
               </header>
 
-              <div className="messages-pane" ref={messagesPane} onScroll={trackScroll}>
+              <div className="messages-pane" ref={messagesPane} onScroll={trackScroll} tabIndex={0} aria-label="Histórico da conversa">
                 {messagesLoading ? <div className="inbox-state"><RefreshCw className="spin" size={18} />Carregando mensagens...</div> : null}
                 {olderMessagesLoading ? <div className="messages-history-status"><RefreshCw className="spin" size={13} />Carregando mensagens anteriores...</div> : null}
                 {!olderMessagesLoading && olderMessagesError ? <div className="messages-history-status error-state">Não foi possível carregar mensagens anteriores.<button onClick={() => void loadOlderMessages()}>Tentar novamente</button></div> : null}
@@ -548,6 +562,6 @@ export function Conversations({ notify, openMobileMenu }: ConversationsProps) {
           )}
         </section>
       </section>
-    </>
+    </div>
   );
 }

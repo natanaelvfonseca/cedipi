@@ -335,7 +335,7 @@ export default function Home() {
       </aside>
       {mobileNavOpen ? <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" /> : null}
 
-      <main className="main-content">
+      <main className={`main-content ${activeView === "conversations" ? "conversations-main" : ""}`}>
         {activeView === "conversations" ? (
           <Conversations notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
         ) : activeView === "users" ? (

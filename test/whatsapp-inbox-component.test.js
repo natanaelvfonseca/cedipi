@@ -19,7 +19,7 @@ test("seleção carrega mensagens pelo id e IA pelo phone", () => {
 test("sucesso limpa campo, insere a resposta sem recarregar o histórico e consulta IA", () => {
   assert.equal(source.includes('setDraft("")'), true);
   const submitSection = source.slice(source.indexOf("async function submitMessage"), source.indexOf("function handleComposerKeyDown"));
-  assert.equal(submitSection.includes("mergeMessages(current, [sent])"), true);
+  assert.equal(submitSection.includes("mergeMessages(messagesRef.current, [sent])"), true);
   assert.equal(submitSection.includes("loadRecentMessages"), false);
   assert.equal(source.includes("loadIndividualControl(selectedConversation, undefined, true)"), true);
 });
@@ -51,7 +51,51 @@ test("polling de mensagens não inclui download de mídia", () => {
 
 test("abertura carrega lote recente e inicia scroll no final", () => {
   assert.equal(source.includes("getWhatsAppMessages(conversation.id, null, signal)"), true);
-  assert.equal(source.includes("scrollTop = messagesPane.current.scrollHeight"), true);
+  assert.equal(source.includes("pane.scrollTop = pane.scrollHeight"), true);
+});
+
+test("histórico é o único scroll vertical do chat e aceita teclado", () => {
+  assert.equal(source.includes('className="messages-pane"'), true);
+  assert.equal(source.includes('tabIndex={0} aria-label="Histórico da conversa"'), true);
+  assert.equal(styles.includes(".messages-pane { min-height: 0; flex: 1 1 auto; overflow-y: auto; overflow-x: hidden"), true);
+  assert.equal(styles.includes(".conversation-chat { min-width: 0; min-height: 0; overflow: hidden"), true);
+});
+
+test("cabeçalho e compositor ficam fixos na cadeia flex", () => {
+  assert.equal(styles.includes(".conversation-header { min-height: 68px; flex: 0 0 auto"), true);
+  assert.equal(styles.includes(".message-composer { position: relative; min-height: 69px; flex: 0 0 auto"), true);
+  assert.equal(styles.includes(".main-content.conversations-main { height: 100dvh; min-height: 0; padding-bottom: 24px; overflow: hidden; }"), true);
+});
+
+test("polling acompanha só mensagem nova quando usuário está perto do final", () => {
+  assert.equal(source.includes("hasNewMessages(current, page.messages)"), true);
+  assert.equal(source.includes("isNearMessagesEnd(pane)"), true);
+  assert.equal(source.includes("scrollToBottomAfterRender.current = initial || shouldFollow"), true);
+  assert.equal(source.includes("shouldAutoScroll"), false);
+});
+
+test("envio manual cria intenção explícita de ir ao final", () => {
+  const submitSection = source.slice(source.indexOf("async function submitMessage"), source.indexOf("function handleComposerKeyDown"));
+  assert.equal(submitSection.includes("scrollToBottomAfterRender.current = true"), true);
+});
+
+test("lista e histórico possuem scroll independente e touch nativo", () => {
+  assert.equal(styles.includes(".conversation-items { min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden"), true);
+  assert.equal((styles.match(/-webkit-overflow-scrolling: touch/g) ?? []).length >= 2, true);
+  assert.equal((styles.match(/touch-action: pan-y/g) ?? []).length >= 2, true);
+  assert.equal(source.includes("preventDefault"), true);
+  assert.equal(source.includes("onTouchMove"), false);
+});
+
+test("layout mobile mantém a inbox na altura disponível", () => {
+  assert.equal(styles.includes(".conversations-view .inbox-shell { height: auto; min-height: 0; display: block; }"), true);
+  assert.equal(styles.includes("overflow-x: hidden"), true);
+});
+
+test("carregamento de mídia não solicita autoscroll", () => {
+  const mediaSection = source.slice(source.indexOf("function useMessageMedia"), source.indexOf("function ImagePreview"));
+  assert.equal(mediaSection.includes("scrollToBottom"), false);
+  assert.equal(mediaSection.includes("scrollIntoView"), false);
 });
 
 test("topo carrega anteriores uma vez e respeita hasMore", () => {
