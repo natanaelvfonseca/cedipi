@@ -26,20 +26,46 @@ import {
   doctorInitials,
   slotLocalParts,
 } from "./agenda-model";
-import { getWhatsAppPresentation, type WhatsAppStatus } from "./whatsapp-status";
-import { LaraControl } from "./lara-control";
 import { Conversations } from "./conversations";
+import { WhatsAppSidebarStatus } from "./whatsapp-sidebar-status";
 
 type ViewMode = "day" | "week";
-type AppView = "agenda" | "conversations";
+type AppView = "agenda" | "conversations" | "patients" | "doctors" | "settings";
+type ComingSoonView = Exclude<AppView, "agenda" | "conversations">;
 
 const navItems = [
   { id: "agenda" as const, label: "Agenda", icon: CalendarDays },
   { id: "conversations" as const, label: "Conversas", icon: MessagesSquare },
-  { label: "Pacientes", icon: UsersRound },
-  { label: "Médicos", icon: Stethoscope },
-  { label: "Configurações", icon: Settings },
+  { id: "patients" as const, label: "Pacientes", icon: UsersRound },
+  { id: "doctors" as const, label: "Médicos", icon: Stethoscope },
+  { id: "settings" as const, label: "Configurações", icon: Settings },
 ];
+
+const comingSoonContent = {
+  patients: { title: "Pacientes", description: "O gerenciamento de pacientes estará disponível em breve.", icon: UsersRound },
+  doctors: { title: "Médicos", description: "O gerenciamento de médicos estará disponível em breve.", icon: Stethoscope },
+  settings: { title: "Configurações", description: "As configurações avançadas estarão disponíveis em breve.", icon: Settings },
+};
+
+function ComingSoon({ view, openMobileMenu }: { view: ComingSoonView; openMobileMenu: () => void }) {
+  const content = comingSoonContent[view];
+  const Icon = content.icon;
+  return (
+    <>
+      <header className="topbar">
+        <div className="title-wrap">
+          <button className="mobile-menu" onClick={openMobileMenu} aria-label="Abrir menu"><Menu size={21} /></button>
+          <div><h1>{content.title}</h1><p>Área de gerenciamento da CEDIPI</p></div>
+        </div>
+      </header>
+      <section className="coming-soon" aria-labelledby="coming-soon-title">
+        <span><Icon size={25} /></span>
+        <strong id="coming-soon-title">EM BREVE</strong>
+        <p>{content.description}</p>
+      </section>
+    </>
+  );
+}
 
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -112,128 +138,6 @@ function statusPresentation(status: string) {
 function StatusBadge({ status }: { status: string }) {
   const presentation = statusPresentation(status);
   return <span className={`status-badge status-${presentation.className}`}>{presentation.label}</span>;
-}
-
-type WhatsAppInstance = {
-  name: string;
-  status: WhatsAppStatus;
-  connected: boolean;
-  phoneNumber?: string | null;
-  profileName?: string | null;
-  lastCheckedAt?: string;
-};
-
-const unknownWhatsApp: WhatsAppInstance = {
-  name: "Cedipi",
-  status: "unknown",
-  connected: false,
-};
-
-function WhatsAppConnection() {
-  const [instance, setInstance] = useState<WhatsAppInstance>(unknownWhatsApp);
-  const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-
-  const refreshStatus = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch("/api/whatsapp/instance", { signal });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error("Status indisponível");
-      setInstance(payload.instance);
-      if (payload.instance.connected) setQrCode(null);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setInstance(unknownWhatsApp);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void refreshStatus(controller.signal);
-    const interval = window.setInterval(() => void refreshStatus(controller.signal), 15_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-    };
-  }, [refreshStatus]);
-
-  useEffect(() => {
-    if (!qrCode) return;
-    const controller = new AbortController();
-    const interval = window.setInterval(() => void refreshStatus(controller.signal), 5_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-    };
-  }, [qrCode, refreshStatus]);
-
-  async function connect() {
-    setConnecting(true);
-    try {
-      const response = await fetch("/api/whatsapp/instance/connect", { method: "POST" });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error("Conexão indisponível");
-      if (payload.connected) {
-        setQrCode(null);
-        await refreshStatus();
-      } else if (payload.qrCode) {
-        setQrCode(payload.qrCode);
-        setInstance((current) => ({ ...current, status: "connecting" }));
-      }
-    } catch {
-      setInstance(unknownWhatsApp);
-    } finally {
-      setConnecting(false);
-    }
-  }
-
-  const presentation = getWhatsAppPresentation(instance.status);
-
-  return (
-    <>
-      <div className="whatsapp-control">
-        <div className={`whatsapp-state-card whatsapp-${instance.status}`}>
-          <span className="whatsapp-status-icon"><MessageCircle size={18} /></span>
-          <div className="whatsapp-status-copy">
-            <div className="whatsapp-status-title">
-              {instance.status === "unknown" ? <AlertTriangle size={14} /> : <i />}
-              <strong>{loading ? "Verificando WhatsApp..." : presentation.label}</strong>
-            </div>
-            <small>Instância {instance.name}</small>
-            {(instance.profileName || instance.phoneNumber) && (
-              <span className="whatsapp-metadata">
-                {instance.profileName && <span>{instance.profileName}</span>}
-                {instance.phoneNumber && <span>{instance.phoneNumber}</span>}
-              </span>
-            )}
-          </div>
-        </div>
-        {presentation.action === "connect" ? (
-          <button className="whatsapp-action" onClick={connect} disabled={connecting}>{connecting ? "Gerando QR..." : "Conectar WhatsApp"}</button>
-        ) : presentation.action === "retry" ? (
-          <button className="whatsapp-action whatsapp-retry" onClick={() => void refreshStatus()} disabled={loading}>Tentar novamente</button>
-        ) : (
-          <button className="whatsapp-refresh" onClick={() => void refreshStatus()} disabled={loading} aria-label={presentation.actionLabel}><RefreshCw size={14} /></button>
-        )}
-      </div>
-      {qrCode && (
-        <div className="modal-layer modal-top" role="dialog" aria-modal="true" aria-labelledby="whatsapp-connect-title">
-          <button className="modal-backdrop" onClick={() => setQrCode(null)} aria-label="Fechar QR Code" />
-          <div className="modal-card whatsapp-modal">
-            <div className="modal-header"><div className="modal-title-icon"><MessageCircle size={20} /></div><div><h2 id="whatsapp-connect-title">Conectar WhatsApp</h2><p>Instância {instance.name}</p></div><button className="icon-button" onClick={() => setQrCode(null)} aria-label="Fechar"><X size={20} /></button></div>
-            <div className="whatsapp-qr-content">
-              <img src={qrCode} alt="QR Code para conectar a instância Cedipi ao WhatsApp" />
-              <p>Escaneie este QR Code no WhatsApp em:<br /><strong>Configurações → Aparelhos conectados → Conectar aparelho.</strong></p>
-              <span><i /> Aguardando leitura do QR Code</span>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
 }
 
 export default function Home() {
@@ -419,18 +323,17 @@ export default function Home() {
           <p>MENU</p>
           {navItems.map((item) => {
             const Icon = item.icon;
-            const itemId = "id" in item ? item.id : null;
-            return <button className={itemId === activeView ? "nav-item active" : "nav-item"} key={item.label} onClick={() => { if (itemId) setActiveView(itemId); setMobileNavOpen(false); }}><Icon size={19} /><span>{item.label}</span></button>;
+            return <button className={item.id === activeView ? "nav-item active" : "nav-item"} key={item.label} onClick={() => { setActiveView(item.id); setMobileNavOpen(false); }}><Icon size={19} /><span>{item.label}</span></button>;
           })}
         </nav>
-        <div className="lara-sidebar"><div className="lara-icon"><Sparkles size={17} /></div><div><strong>Lara IA</strong><small>Atendimento automatizado</small></div></div>
+        <WhatsAppSidebarStatus />
       </aside>
       {mobileNavOpen ? <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" /> : null}
 
       <main className="main-content">
         {activeView === "conversations" ? (
           <Conversations notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
-        ) : <>
+        ) : activeView === "agenda" ? <>
         <header className="topbar">
           <div className="title-wrap">
             <button className="mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Abrir menu"><Menu size={21} /></button>
@@ -451,14 +354,6 @@ export default function Home() {
           ))}
           {!doctorsLoading && doctors.length === 0 ? <div className="inline-state error-state">Nenhum médico disponível.</div> : null}
         </section>
-
-        <section className="lara-banner">
-          <div className="lara-banner-icon"><Sparkles size={18} /></div>
-          <div><strong>Lara IA <span>Atendimento automático por IA</span></strong><p>Agendamentos realizados pela Lara aparecem automaticamente na agenda.</p></div>
-          <WhatsAppConnection />
-        </section>
-
-        <LaraControl notify={showToast} />
 
         <section className="summary-row" aria-label="Resumo da agenda">
           <div className="summary-card"><span>Agendamentos hoje</span><strong>{dayAppointments.length}</strong></div>
@@ -530,7 +425,7 @@ export default function Home() {
             </div>
           )}
         </section>
-        </>}
+        </> : <ComingSoon view={activeView} openMobileMenu={() => setMobileNavOpen(true)} />}
       </main>
 
       {activeView === "agenda" && selectedAppointment ? (
