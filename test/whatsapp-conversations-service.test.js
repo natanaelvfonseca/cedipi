@@ -71,22 +71,30 @@ test("normaliza texto, áudio, imagem e documento sem baixar mídia", () => {
   }).text, "exame.pdf");
 });
 
-test("busca e ordena mensagens da conversa", async () => {
-  let receivedJid;
+test("busca todas as páginas, preserva os dois lados e ordena da mais antiga", async () => {
+  const requests = [];
   const service = createWhatsAppConversationsService({
     evolution: {
-      async findMessages(value) {
-        receivedJid = value;
-        return { messages: { records: [
-          { key: { id: "2", fromMe: true }, message: { conversation: "Segundo" }, messageTimestamp: 1788782460 },
+      async findMessages(value, pagination) {
+        requests.push({ value, pagination });
+        if (pagination.page === 1) {
+          return { messages: { pages: 2, currentPage: 1, records: [
+            { key: { id: "2", fromMe: true }, message: { conversation: "Segundo" }, messageTimestamp: 1788782460 },
+          ] } };
+        }
+        return { messages: { pages: 2, currentPage: 2, records: [
           { key: { id: "1", fromMe: false }, message: { conversation: "Primeiro" }, messageTimestamp: 1788782400 },
         ] } };
       },
     },
   });
   const messages = await service.listMessages(jid);
-  assert.equal(receivedJid, jid);
+  assert.deepEqual(requests, [
+    { value: jid, pagination: { page: 1, offset: 100 } },
+    { value: jid, pagination: { page: 2, offset: 100 } },
+  ]);
   assert.deepEqual(messages.map((message) => message.id), ["1", "2"]);
+  assert.deepEqual(messages.map((message) => message.fromMe), [false, true]);
 });
 
 test("envio manual pausa IA antes de enviar texto", async () => {

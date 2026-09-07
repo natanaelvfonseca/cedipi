@@ -36,6 +36,18 @@ test("GET busca mensagens usando o JID individual", async () => {
   assert.deepEqual(response.body, { ok: true, messages: [] });
 });
 
+test("GET preserva JID original e separa telefone normalizado", async () => {
+  let received;
+  const response = responseRecorder();
+  await createListWhatsAppMessagesHandler({ async listMessages(jid) { received = jid; return []; } })(
+    { params: { conversationId: "554791935149@s.whatsapp.net" } },
+    response,
+  );
+  assert.equal(received, "554791935149@s.whatsapp.net");
+  assert.notEqual(received, "5547991935149@s.whatsapp.net");
+  assert.equal(response.statusCode, 200);
+});
+
 test("POST rejeita mensagem vazia", async () => {
   let called = false;
   const response = responseRecorder();

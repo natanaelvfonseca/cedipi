@@ -111,10 +111,14 @@ export function createEvolutionClient({
     });
   }
 
-  async function findMessages(remoteJid) {
+  async function findMessages(remoteJid, { page = 1, offset = 100 } = {}) {
     return request(`/chat/findMessages/${cedipiInstanceName}`, {
       method: "POST",
-      payload: { where: { key: { remoteJid } } },
+      payload: {
+        where: { key: { remoteJid, remoteJidAlt: remoteJid } },
+        page,
+        offset,
+      },
     });
   }
 

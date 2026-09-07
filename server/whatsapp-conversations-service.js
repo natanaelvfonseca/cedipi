@@ -11,11 +11,14 @@ export class WhatsAppConversationError extends Error {
   }
 }
 
-function recordsFromMessages(payload) {
-  if (Array.isArray(payload)) return payload;
+function pageFromMessages(payload) {
+  if (Array.isArray(payload)) return { records: payload, pages: 1 };
   const messages = payload?.messages ?? payload?.data ?? payload;
-  if (Array.isArray(messages)) return messages;
-  if (Array.isArray(messages?.records)) return messages.records;
+  if (Array.isArray(messages)) return { records: messages, pages: 1 };
+  if (Array.isArray(messages?.records)) {
+    const pages = Number.isInteger(messages.pages) && messages.pages > 0 ? messages.pages : 1;
+    return { records: messages.records, pages };
+  }
   throw new WhatsAppConversationError("evolution_invalid_response");
 }
 
@@ -131,7 +134,27 @@ export function createWhatsAppConversationsService({
 
     async listMessages(remoteJid) {
       try {
-        return recordsFromMessages(await evolutionClient().findMessages(remoteJid))
+        const client = evolutionClient();
+        const records = [];
+        let currentPage = 1;
+        let totalPages = 1;
+
+        do {
+          const result = pageFromMessages(await client.findMessages(remoteJid, {
+            page: currentPage,
+            offset: 100,
+          }));
+          records.push(...result.records);
+          totalPages = result.pages;
+          currentPage += 1;
+        } while (currentPage <= totalPages);
+
+        const uniqueRecords = [...new Map(records.map((record, index) => [
+          record?.key?.id ?? record?.id ?? `record-${index}`,
+          record,
+        ])).values()];
+
+        return uniqueRecords
           .map(normalizeMessage)
           .sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
       } catch (error) {
