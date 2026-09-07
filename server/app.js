@@ -26,16 +26,41 @@ import {
   createPatchConversationAiControlHandler,
   createSendWhatsAppMessageHandler,
 } from "./whatsapp-conversations-handlers.js";
+import { createAuthService } from "./auth-service.js";
+import { createLoginRateLimiter } from "./login-rate-limit.js";
+import {
+  createChangePasswordHandler,
+  createLoginHandler,
+  createLogoutHandler,
+  createMeHandler,
+  createUsersHandlers,
+} from "./auth-handlers.js";
+import { createRequireAuth, requireAdmin, requirePasswordChanged, verifySameOrigin } from "./auth-middleware.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
 
-export function createApp() {
+export function createApp({ authService = createAuthService(), loginRateLimiter = createLoginRateLimiter() } = {}) {
   const app = express();
 
   app.disable("x-powered-by");
+  app.set("trust proxy", 1);
   app.use(express.json({ limit: "32kb" }));
+  app.use("/api", verifySameOrigin);
   app.get("/api/health/database", createDatabaseHealthHandler());
+  app.post("/api/auth/login", createLoginHandler(authService, loginRateLimiter));
+
+  app.use("/api", createRequireAuth(authService));
+  app.get("/api/auth/me", createMeHandler());
+  app.post("/api/auth/logout", createLogoutHandler(authService));
+  app.post("/api/auth/change-password", createChangePasswordHandler(authService));
+  app.use("/api", requirePasswordChanged);
+
+  const users = createUsersHandlers(authService);
+  app.get("/api/users", requireAdmin, users.list);
+  app.post("/api/users", requireAdmin, users.create);
+  app.patch("/api/users/:userId", requireAdmin, users.update);
+  app.post("/api/users/:userId/reset-password", requireAdmin, users.resetPassword);
   app.get("/api/whatsapp/instance", createGetWhatsAppInstanceHandler());
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
   app.post("/api/whatsapp/instance/disconnect", createDisconnectWhatsAppHandler());
@@ -60,6 +85,10 @@ export function createApp() {
     }
 
     response.sendFile(path.join(distDirectory, "index.html"));
+  });
+  app.use((error, _request, response, _next) => {
+    console.error("Erro interno na API CEDIPI.");
+    if (!response.headersSent) response.status(500).json({ ok: false, error: "internal_error" });
   });
 
   return app;

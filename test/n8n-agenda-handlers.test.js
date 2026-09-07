@@ -100,13 +100,16 @@ test("endpoint sem configuração retorna erro claro", async () => {
 });
 
 test("POST de appointments rejeita payload inválido antes de acessar serviços", async () => {
-  const server = createApp().listen(0, "127.0.0.1");
+  const authService = {
+    authenticate: async () => ({ tokenHash: "hash", user: { id: "1", role: "admin", mustChangePassword: false } }),
+  };
+  const server = createApp({ authService }).listen(0, "127.0.0.1");
   try {
     await new Promise((resolve) => server.once("listening", resolve));
     const address = server.address();
     const response = await fetch(`http://127.0.0.1:${address.port}/api/appointments`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: "cedipi_session=test" },
       body: JSON.stringify({ doctorId: "anything" }),
     });
     assert.equal(response.status, 400);

@@ -1,4 +1,5 @@
 import type { WhatsAppStatus } from "./whatsapp-status";
+import { apiFetch } from "./api-fetch.ts";
 
 export type WhatsAppInstance = {
   name: string;
@@ -44,7 +45,7 @@ async function requestJson(
 
 export async function getWhatsAppInstance(
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ): Promise<WhatsAppInstance> {
   const payload = await requestJson("/api/whatsapp/instance", { signal }, fetchImpl);
   if (!("instance" in payload) || !payload.instance || typeof payload.instance !== "object") {
@@ -66,7 +67,7 @@ export async function getWhatsAppInstance(
   };
 }
 
-export async function connectWhatsAppInstance(fetchImpl: typeof fetch = fetch) {
+export async function connectWhatsAppInstance(fetchImpl: typeof fetch = apiFetch) {
   const payload = await requestJson("/api/whatsapp/instance/connect", { method: "POST" }, fetchImpl);
   if (payload.status === "connected" && payload.connected === true && payload.qrCode === null) {
     return { status: "connected" as const, connected: true as const, qrCode: null };
@@ -77,7 +78,7 @@ export async function connectWhatsAppInstance(fetchImpl: typeof fetch = fetch) {
   throw new WhatsAppInstanceApiError();
 }
 
-export async function disconnectWhatsAppInstance(fetchImpl: typeof fetch = fetch) {
+export async function disconnectWhatsAppInstance(fetchImpl: typeof fetch = apiFetch) {
   const payload = await requestJson("/api/whatsapp/instance/disconnect", { method: "POST" }, fetchImpl);
   if (payload.status !== "disconnected") throw new WhatsAppInstanceApiError();
   return { status: "disconnected" as const };

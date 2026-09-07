@@ -28,16 +28,20 @@ import {
 } from "./agenda-model";
 import { Conversations } from "./conversations";
 import { WhatsAppSidebarStatus } from "./whatsapp-sidebar-status";
+import { AccountMenu } from "./account-menu";
+import { useAuth } from "./auth-context";
+import { UsersScreen } from "./users";
 
 type ViewMode = "day" | "week";
-type AppView = "agenda" | "conversations" | "patients" | "doctors" | "settings";
-type ComingSoonView = Exclude<AppView, "agenda" | "conversations">;
+type AppView = "agenda" | "conversations" | "patients" | "doctors" | "users" | "settings";
+type ComingSoonView = Exclude<AppView, "agenda" | "conversations" | "users">;
 
 const navItems = [
   { id: "agenda" as const, label: "Agenda", icon: CalendarDays },
   { id: "conversations" as const, label: "Conversas", icon: MessagesSquare },
   { id: "patients" as const, label: "Pacientes", icon: UsersRound },
   { id: "doctors" as const, label: "Médicos", icon: Stethoscope },
+  { id: "users" as const, label: "Usuários", icon: UsersRound, adminOnly: true },
   { id: "settings" as const, label: "Configurações", icon: Settings },
 ];
 
@@ -141,6 +145,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const [activeView, setActiveView] = useState<AppView>("agenda");
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
@@ -321,18 +326,20 @@ export default function Home() {
         </div>
         <nav className="primary-nav" aria-label="Navegação principal">
           <p>MENU</p>
-          {navItems.map((item) => {
+          {navItems.filter((item) => !("adminOnly" in item) || user.role === "admin").map((item) => {
             const Icon = item.icon;
             return <button className={item.id === activeView ? "nav-item active" : "nav-item"} key={item.label} onClick={() => { setActiveView(item.id); setMobileNavOpen(false); }}><Icon size={19} /><span>{item.label}</span></button>;
           })}
         </nav>
-        <WhatsAppSidebarStatus />
+        <div className="sidebar-footer"><WhatsAppSidebarStatus /><AccountMenu /></div>
       </aside>
       {mobileNavOpen ? <button className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} aria-label="Fechar menu" /> : null}
 
       <main className="main-content">
         {activeView === "conversations" ? (
           <Conversations notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
+        ) : activeView === "users" ? (
+          <UsersScreen notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
         ) : activeView === "agenda" ? <>
         <header className="topbar">
           <div className="title-wrap">

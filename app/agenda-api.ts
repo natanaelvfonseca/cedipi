@@ -1,3 +1,5 @@
+import { apiFetch } from "./api-fetch.ts";
+
 export type Doctor = {
   id: string;
   name: string;
@@ -61,7 +63,7 @@ export class AgendaApiError extends Error {
 async function requestJson<T>(
   url: string,
   options: RequestInit = {},
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ): Promise<T> {
   let response: Response;
   try {
@@ -92,7 +94,7 @@ async function requestJson<T>(
   return payload as T;
 }
 
-export async function getDoctors(signal?: AbortSignal, fetchImpl: typeof fetch = fetch) {
+export async function getDoctors(signal?: AbortSignal, fetchImpl: typeof fetch = apiFetch) {
   const payload = await requestJson<{ ok: true; doctors: Doctor[] }>(
     "/api/doctors",
     { signal },
@@ -105,7 +107,7 @@ export async function getAvailability(
   date: string,
   doctor: string,
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const query = new URLSearchParams({ date, doctor });
   const payload = await requestJson<{ ok: true; slots: AvailabilitySlot[] }>(
@@ -116,7 +118,7 @@ export async function getAvailability(
   return payload.slots;
 }
 
-export async function getAppointments(signal?: AbortSignal, fetchImpl: typeof fetch = fetch) {
+export async function getAppointments(signal?: AbortSignal, fetchImpl: typeof fetch = apiFetch) {
   const payload = await requestJson<{ ok: true; appointments: ApiAppointment[] }>(
     "/api/appointments",
     { signal },
@@ -127,7 +129,7 @@ export async function getAppointments(signal?: AbortSignal, fetchImpl: typeof fe
 
 export async function postAppointment(
   appointment: CreateAppointmentPayload,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const payload = await requestJson<{ ok: true; appointment: CreatedAppointment }>(
     "/api/appointments",

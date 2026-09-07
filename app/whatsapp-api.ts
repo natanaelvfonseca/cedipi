@@ -1,3 +1,5 @@
+import { apiFetch } from "./api-fetch.ts";
+
 export type WhatsAppConversation = {
   id: string;
   phone: string;
@@ -35,7 +37,7 @@ export class WhatsAppInboxApiError extends Error {
 async function requestJson<T>(
   url: string,
   options: RequestInit = {},
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ): Promise<T> {
   let response: Response;
   try {
@@ -60,7 +62,7 @@ async function requestJson<T>(
 
 export async function getWhatsAppConversations(
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const payload = await requestJson<{ ok: true; conversations: WhatsAppConversation[] }>(
     "/api/whatsapp/conversations",
@@ -75,7 +77,7 @@ export async function getWhatsAppMessages(
   conversationId: string,
   cursor?: string | null,
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const query = new URLSearchParams({ limit: "50" });
   if (cursor) query.set("cursor", cursor);
@@ -99,7 +101,7 @@ export async function getWhatsAppMessageMedia(
   conversationId: string,
   messageId: string,
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   let response: Response;
   try {
@@ -118,7 +120,7 @@ export async function getWhatsAppMessageMedia(
 export async function sendWhatsAppMessage(
   conversationId: string,
   text: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const payload = await requestJson<{ ok: true; message: WhatsAppMessage }>(
     `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -135,7 +137,7 @@ export async function sendWhatsAppMessage(
 export async function getConversationAiControl(
   phone: string,
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const payload = await requestJson<{ ok: true; enabled: boolean }>(
     `/api/whatsapp/conversations/${encodeURIComponent(phone)}/ai-control`,
@@ -149,7 +151,7 @@ export async function getConversationAiControl(
 export async function patchConversationAiControl(
   phone: string,
   enabled: boolean,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   const payload = await requestJson<{ ok: true; enabled: boolean }>(
     `/api/whatsapp/conversations/${encodeURIComponent(phone)}/ai-control`,

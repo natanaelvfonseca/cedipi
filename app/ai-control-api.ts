@@ -1,3 +1,5 @@
+import { apiFetch } from "./api-fetch.ts";
+
 export class AiControlApiError extends Error {
   constructor() {
     super("ai_control_request_failed");
@@ -41,14 +43,14 @@ async function requestAiControl(
 
 export function getAiControl(
   signal?: AbortSignal,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   return requestAiControl({ method: "GET", signal }, fetchImpl);
 }
 
 export function patchAiControl(
   enabled: boolean,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = apiFetch,
 ) {
   return requestAiControl({
     method: "PATCH",
