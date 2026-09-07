@@ -17,6 +17,7 @@ function fakePool(patientId) {
         starts_at: new Date("2026-09-09T12:00:00.000Z"),
         ends_at: new Date("2026-09-09T12:20:00.000Z"),
         status: "available",
+        in_schedule: true,
       }] };
       if (sql.includes("FROM appointments")) return { rows: [] };
       if (sql.includes("INSERT INTO patients")) return { rows: [{

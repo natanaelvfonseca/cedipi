@@ -14,9 +14,10 @@ export type AvailabilitySlot = {
   endsAt: string;
   startsAtLocal: string;
   endsAtLocal: string;
-  status: "available" | "blocked" | "unavailable";
+  status: "available" | "booked" | "blocked" | "unavailable";
   source: string;
   notes: string | null;
+  block: { id: string; reason: string | null } | null;
 };
 
 export type ApiAppointment = {
@@ -46,6 +47,17 @@ export type CreatedAppointment = {
   exam: string | null;
   start: string;
   end: string;
+};
+
+export type ScheduleBlock = {
+  id: string;
+  doctor: { id: string; name: string };
+  slotId: string;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+  createdBy: string;
+  createdAt: string;
 };
 
 export class AgendaApiError extends Error {
@@ -141,6 +153,52 @@ export async function postAppointment(
     fetchImpl,
   );
   return payload.appointment;
+}
+
+export async function getScheduleBlocks(
+  date: string,
+  doctorId: string,
+  signal?: AbortSignal,
+  fetchImpl: typeof fetch = apiFetch,
+) {
+  const query = new URLSearchParams({ date, doctorId });
+  const payload = await requestJson<{ ok: true; blocks: ScheduleBlock[] }>(
+    `/api/scheduling/blocks?${query}`,
+    { signal },
+    fetchImpl,
+  );
+  return payload.blocks;
+}
+
+export async function postScheduleBlocks(
+  input: { doctorId: string; date: string; times: string[]; reason?: string },
+  fetchImpl: typeof fetch = apiFetch,
+) {
+  const payload = await requestJson<{ ok: true; blocks: ScheduleBlock[] }>(
+    "/api/scheduling/blocks",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    fetchImpl,
+  );
+  return payload.blocks;
+}
+
+export async function deleteScheduleBlocks(
+  blockIds: string[],
+  fetchImpl: typeof fetch = apiFetch,
+) {
+  return requestJson<{ ok: true; removed: number }>(
+    "/api/scheduling/blocks",
+    {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ blockIds }),
+    },
+    fetchImpl,
+  );
 }
 
 export async function postAppointmentAndRefresh(

@@ -24,8 +24,22 @@ function service(overrides = {}) {
 }
 
 test("APIs operacionais exigem sessão", async () => withServer(service(), async (base) => {
-  const response = await fetch(`${base}/api/doctors`);
-  assert.equal(response.status, 401); assert.deepEqual(await response.json(), { ok: false, error: "unauthorized" });
+  for (const path of ["/api/doctors", "/api/scheduling/blocks?date=2026-09-14&doctor=Danilo"]) {
+    const response = await fetch(`${base}${path}`);
+    assert.equal(response.status, 401); assert.deepEqual(await response.json(), { ok: false, error: "unauthorized" });
+  }
+}));
+
+test("atendente autenticado alcança a API de bloqueios", async () => withServer(service({
+  authenticate: async () => ({ tokenHash: "hash", user: { ...admin, role: "attendant" } }),
+}), async (base) => {
+  const response = await fetch(`${base}/api/scheduling/blocks`, {
+    method: "POST",
+    headers: { cookie: "cedipi_session=token", "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { ok: false, error: "invalid_request" });
 }));
 
 test("login cria cookie HttpOnly, SameSite Lax e Path raiz", async () => withServer(service(), async (base) => {

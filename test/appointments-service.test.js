@@ -95,6 +95,8 @@ for (const [repositoryCode, expectedStatus] of [
   ["slot_not_found", 404],
   ["slot_doctor_mismatch", 409],
   ["slot_unavailable", 409],
+  ["slot_in_past", 409],
+  ["slot_blocked", 409],
 ]) {
   test(`mapeia ${repositoryCode}`, async () => {
     const service = createAppointmentsService({

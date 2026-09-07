@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDatabasePool } from "./database.js";
+import { businessTimezone } from "./schedule-slots-repository.js";
 
 const activeStatuses = ["pending", "confirmed", "scheduled"];
 
@@ -47,20 +48,49 @@ export async function reservePendingAppointment({
 
     const slotResult = await client.query(
       `
-        SELECT id, doctor_id, starts_at, ends_at, status
-        FROM doctor_availability
-        WHERE id = $1
+        SELECT availability.id, availability.doctor_id, availability.starts_at,
+               availability.ends_at, availability.status,
+               EXISTS (
+                 SELECT 1 FROM doctor_weekly_schedules schedules
+                 WHERE schedules.doctor_id = availability.doctor_id
+                   AND schedules.active = TRUE
+                   AND schedules.weekday = EXTRACT(ISODOW FROM availability.starts_at AT TIME ZONE $2)
+                   AND (availability.starts_at AT TIME ZONE $2)::time >= schedules.starts_at
+                   AND (availability.ends_at AT TIME ZONE $2)::time <= schedules.ends_at
+                   AND MOD(EXTRACT(EPOCH FROM (
+                     (availability.starts_at AT TIME ZONE $2)::time - schedules.starts_at
+                   ))::integer, schedules.slot_duration_minutes * 60) = 0
+               ) AS in_schedule
+        FROM doctor_availability availability
+        WHERE availability.id = $1
         FOR UPDATE;
       `,
-      [slotId],
+      [slotId, businessTimezone],
     );
     const slot = slotResult.rows[0];
     if (!slot) throw new AppointmentReservationError("slot_not_found");
     if (slot.doctor_id !== doctorId) {
       throw new AppointmentReservationError("slot_doctor_mismatch");
     }
+    if (!slot.in_schedule) {
+      throw new AppointmentReservationError("slot_unavailable");
+    }
     if (slot.status !== "available") {
       throw new AppointmentReservationError("slot_unavailable");
+    }
+    if (slot.starts_at <= new Date()) {
+      throw new AppointmentReservationError("slot_in_past");
+    }
+
+    const blockResult = await client.query(
+      `SELECT id
+       FROM doctor_schedule_blocks
+       WHERE availability_id = $1 AND removed_at IS NULL
+       LIMIT 1;`,
+      [slotId],
+    );
+    if (blockResult.rows[0]) {
+      throw new AppointmentReservationError("slot_blocked");
     }
 
     const occupiedResult = await client.query(

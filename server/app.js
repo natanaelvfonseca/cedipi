@@ -15,6 +15,11 @@ import {
 import { createLiveAvailabilityHandler } from "./n8n-agenda-handlers.js";
 import { createPostAppointmentHandler } from "./appointments-handlers.js";
 import {
+  createDeleteScheduleBlocksHandler,
+  createListScheduleBlocksHandler,
+  createPostScheduleBlocksHandler,
+} from "./schedule-blocks-handlers.js";
+import {
   createGetAiControlHandler,
   createPatchAiControlHandler,
 } from "./ai-control-handlers.js";
@@ -73,6 +78,9 @@ export function createApp({ authService = createAuthService(), loginRateLimiter 
   app.get("/api/doctors", createListDoctorsHandler());
   app.get("/api/scheduling/availability", createListAvailabilityHandler());
   app.get("/api/scheduling/live-availability", createLiveAvailabilityHandler());
+  app.get("/api/scheduling/blocks", createListScheduleBlocksHandler());
+  app.post("/api/scheduling/blocks", createPostScheduleBlocksHandler());
+  app.delete("/api/scheduling/blocks", createDeleteScheduleBlocksHandler());
   app.get("/api/appointments", createListAppointmentsHandler());
   app.post("/api/appointments", createPostAppointmentHandler());
   app.get("/api/ai-control", createGetAiControlHandler());

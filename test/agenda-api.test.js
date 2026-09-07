@@ -4,8 +4,10 @@ import {
   AgendaApiError,
   getAvailability,
   getDoctors,
+  deleteScheduleBlocks,
   postAppointment,
   postAppointmentAndRefresh,
+  postScheduleBlocks,
 } from "../app/agenda-api.ts";
 
 const doctor = {
@@ -94,4 +96,21 @@ test("erro de API não expõe resposta técnica", async () => {
     getDoctors(undefined, async () => new Response("upstream stack", { status: 500 })),
     (error) => error instanceof AgendaApiError && error.code === "invalid_response",
   );
+});
+
+test("bloqueia horários por médico/data e desbloqueia por IDs", async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    return Response.json(options.method === "DELETE"
+      ? { ok: true, removed: 2 } : { ok: true, blocks: [] }, { status: options.method === "POST" ? 201 : 200 });
+  };
+  await postScheduleBlocks({
+    doctorId: doctor.id, date: "2026-09-14", times: ["09:00", "09:40"], reason: "Teste",
+  }, fetchImpl);
+  await deleteScheduleBlocks(["block-1", "block-2"], fetchImpl);
+  assert.equal(requests[0].url, "/api/scheduling/blocks");
+  assert.deepEqual(JSON.parse(requests[0].options.body).times, ["09:00", "09:40"]);
+  assert.equal(requests[1].options.method, "DELETE");
+  assert.deepEqual(JSON.parse(requests[1].options.body), { blockIds: ["block-1", "block-2"] });
 });

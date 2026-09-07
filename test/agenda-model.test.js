@@ -76,6 +76,13 @@ test("remove da disponibilidade slots ocupados por appointment ativo", () => {
   assert.deepEqual(availableSlotsForAppointments([], []), []);
 });
 
+test("bloqueado e booked nunca aparecem como horários de novo agendamento", () => {
+  assert.deepEqual(availableSlotsForAppointments([
+    { ...slot, status: "blocked" },
+    { ...slot, id: "booked", status: "booked" },
+  ], []), []);
+});
+
 test("conflito recebe mensagem amigável", () => {
   assert.equal(
     appointmentErrorMessage("slot_already_occupied"),

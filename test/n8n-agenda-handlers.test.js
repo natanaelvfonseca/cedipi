@@ -55,6 +55,21 @@ test("endpoint normaliza os parâmetros e devolve disponibilidade", async () => 
   });
 });
 
+test("bridge materializa a grade da data antes de consultar o n8n", async () => {
+  const calls = [];
+  const response = responseRecorder();
+  const handler = createLiveAvailabilityHandler(
+    async () => { calls.push("n8n"); return { available: false, slots: [], message: null }; },
+    async (filters) => { calls.push(["prepare", filters]); },
+  );
+  await handler({ query: { date: "2026-09-14", doctor: "Danilo" } }, response);
+  assert.deepEqual(calls, [
+    ["prepare", { date: "2026-09-14", doctor: "Danilo" }],
+    "n8n",
+  ]);
+  assert.equal(response.statusCode, 200);
+});
+
 test("endpoint não expõe segredo em falhas do n8n", async () => {
   const response = responseRecorder();
   const handler = createLiveAvailabilityHandler(async () => {

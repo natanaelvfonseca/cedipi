@@ -101,6 +101,9 @@ export function appointmentErrorMessage(code: string) {
     "horario_invalido",
     "ocupado",
     "sem_horario",
+    "slot_blocked",
+    "slot_in_past",
+    "slot_unavailable",
   ].includes(code)) {
     return "Este horário acabou de ficar indisponível. A agenda foi atualizada.";
   }

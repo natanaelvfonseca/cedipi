@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  AlertTriangle, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3,
+  AlertTriangle, Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3,
   FileText, Menu, MessageCircle, MessagesSquare, Plus, RefreshCw, Settings, Sparkles, Stethoscope,
   UserRound, UsersRound, X,
 } from "lucide-react";
@@ -11,7 +11,9 @@ import {
   getAppointments,
   getAvailability,
   getDoctors,
+  deleteScheduleBlocks,
   postAppointmentAndRefresh,
+  postScheduleBlocks,
   type ApiAppointment,
   type AvailabilitySlot,
   type Doctor,
@@ -155,6 +157,13 @@ export default function Home() {
   const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [selectedBlockSlots, setSelectedBlockSlots] = useState<string[]>([]);
+  const [selectedUnblocks, setSelectedUnblocks] = useState<string[]>([]);
+  const [blockReason, setBlockReason] = useState("");
+  const [blockSaving, setBlockSaving] = useState(false);
+  const [confirmBlocks, setConfirmBlocks] = useState(false);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [agendaLoading, setAgendaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -193,7 +202,12 @@ export default function Home() {
       time: appointment.time,
       appointment,
     }));
-    const slotItems = availableSlots.map((slot) => ({
+    const appointmentStarts = new Set(dayAppointments
+      .filter((appointment) => ["pending", "confirmed", "scheduled"].includes(appointment.status))
+      .map((appointment) => new Date(appointment.startsAt).getTime()));
+    const slotItems = configuredSlots
+      .filter((slot) => !appointmentStarts.has(new Date(slot.startsAt).getTime()))
+      .map((slot) => ({
       type: "slot" as const,
       id: slot.id,
       time: slotLocalParts(slot).time,
@@ -202,7 +216,7 @@ export default function Home() {
     return [...eventItems, ...slotItems].sort(
       (left, right) => left.time.localeCompare(right.time) || left.type.localeCompare(right.type),
     );
-  }, [availableSlots, dayAppointments]);
+  }, [configuredSlots, dayAppointments]);
 
   const showToast = useCallback((message: string, kind: "success" | "error" = "success") => {
     setToast({ message, kind });
@@ -266,13 +280,77 @@ export default function Home() {
     return () => controller.abort();
   }, [loadAgenda]);
 
-  function openFirstAvailableSlot() {
-    if (availableSlots[0]) {
-      setFormError(null);
-      setSelectedSlot(availableSlots[0]);
-      return;
+  function openAppointmentModal(slot: AvailabilitySlot | null = null) {
+    setFormError(null);
+    setSelectedSlot(slot);
+    setAppointmentModalOpen(true);
+  }
+
+  function closeAppointmentModal() {
+    if (submitting) return;
+    setSelectedSlot(null);
+    setAppointmentModalOpen(false);
+  }
+
+  function openBlockModal() {
+    setSelectedBlockSlots([]);
+    setSelectedUnblocks([]);
+    setBlockReason("");
+    setBlockModalOpen(true);
+  }
+
+  function toggleBlockSlot(slot: AvailabilitySlot) {
+    if (slot.status === "available") {
+      setSelectedBlockSlots((current) => current.includes(slot.id)
+        ? current.filter((id) => id !== slot.id) : [...current, slot.id]);
+    } else if (slot.status === "blocked" && slot.block) {
+      setSelectedUnblocks((current) => current.includes(slot.block!.id)
+        ? current.filter((id) => id !== slot.block!.id) : [...current, slot.block!.id]);
     }
-    showToast("Não há horários disponíveis para este médico nesta data.", "error");
+  }
+
+  async function saveBlocks() {
+    if (!selectedDoctorId || selectedBlockSlots.length === 0 || blockSaving) return;
+    setBlockSaving(true);
+    try {
+      await postScheduleBlocks({
+        doctorId: selectedDoctorId,
+        date: dateKey,
+        times: configuredSlots
+          .filter((slot) => selectedBlockSlots.includes(slot.id))
+          .map((slot) => slotLocalParts(slot).time),
+        ...(blockReason.trim() ? { reason: blockReason.trim() } : {}),
+      });
+      setConfirmBlocks(false);
+      setBlockModalOpen(false);
+      showToast(selectedBlockSlots.length === 1 ? "Horário bloqueado." : "Horários bloqueados.");
+      await loadAgenda();
+    } catch (error) {
+      const code = error instanceof AgendaApiError ? error.code : "request_failed";
+      showToast(code === "slot_conflict"
+        ? "Um dos horários mudou. A agenda foi atualizada."
+        : "Não foi possível bloquear os horários.", "error");
+      setConfirmBlocks(false);
+      await loadAgenda();
+    } finally {
+      setBlockSaving(false);
+    }
+  }
+
+  async function unblockSelected() {
+    if (selectedUnblocks.length === 0 || blockSaving) return;
+    setBlockSaving(true);
+    try {
+      await deleteScheduleBlocks(selectedUnblocks);
+      setSelectedUnblocks([]);
+      showToast(selectedUnblocks.length === 1 ? "Horário desbloqueado." : "Horários desbloqueados.");
+      await loadAgenda();
+    } catch {
+      showToast("Não foi possível desbloquear os horários.", "error");
+      await loadAgenda();
+    } finally {
+      setBlockSaving(false);
+    }
   }
 
   async function createAppointment(event: FormEvent<HTMLFormElement>) {
@@ -292,6 +370,7 @@ export default function Home() {
     try {
       await postAppointmentAndRefresh(payload, () => loadAgenda());
       setSelectedSlot(null);
+      setAppointmentModalOpen(false);
       showToast("Agendamento realizado com sucesso.");
     } catch (error) {
       const code = error instanceof AgendaApiError ? error.code : "request_failed";
@@ -305,6 +384,7 @@ export default function Home() {
         "sem_horario",
       ].includes(code)) {
         setSelectedSlot(null);
+        setAppointmentModalOpen(false);
         showToast(message, "error");
         await loadAgenda();
       } else {
@@ -348,7 +428,8 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <button className="button button-secondary" onClick={() => setSelectedDate(todayInSaoPaulo())}><CalendarDays size={17} /> Hoje</button>
-            <button className="button button-primary" onClick={openFirstAvailableSlot} disabled={!selectedDoctor || agendaLoading}><Plus size={18} /> Novo agendamento</button>
+            <button className="button button-secondary" onClick={openBlockModal} disabled={!selectedDoctor || agendaLoading}><Ban size={17} /> Bloquear horários</button>
+            <button className="button button-primary" onClick={() => openAppointmentModal()} disabled={!selectedDoctor || agendaLoading}><Plus size={18} /> Novo agendamento</button>
           </div>
         </header>
 
@@ -402,8 +483,14 @@ export default function Home() {
                           <span className="appointment-accent" /><span className="appointment-main"><strong>{item.appointment.patientName}</strong><small>{item.appointment.examName || "Exame não informado"}</small></span>
                           <OriginBadge source={item.appointment.source} /><StatusBadge status={item.appointment.status} /><ChevronRight className="appointment-chevron" size={17} />
                         </button>
+                      ) : item.slot.status === "available" ? (
+                        <button className="available-slot" onClick={() => openAppointmentModal(item.slot)}><Plus size={14} /> Disponível</button>
+                      ) : item.slot.status === "blocked" ? (
+                        <button className="schedule-slot schedule-slot-blocked" onClick={openBlockModal}><Ban size={14} /> Bloqueado{item.slot.block?.reason ? ` · ${item.slot.block.reason}` : ""}</button>
+                      ) : item.slot.status === "booked" ? (
+                        <div className="schedule-slot schedule-slot-booked"><CalendarDays size={14} /> Reservado</div>
                       ) : (
-                        <button className="available-slot" onClick={() => { setFormError(null); setSelectedSlot(item.slot); }}><Plus size={14} /> Disponível</button>
+                        <div className="schedule-slot schedule-slot-unavailable"><AlertTriangle size={14} /> Indisponível</div>
                       )}
                     </div>
                   ))}
@@ -456,12 +543,21 @@ export default function Home() {
         </div>
       ) : null}
 
-      {activeView === "agenda" && selectedSlot ? (
+      {activeView === "agenda" && appointmentModalOpen ? (
         <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="new-title">
-          <button className="modal-backdrop" onClick={() => { if (!submitting) setSelectedSlot(null); }} aria-label="Fechar modal" />
+          <button className="modal-backdrop" onClick={closeAppointmentModal} aria-label="Fechar modal" />
           <div className="modal-card modal-large">
-            <div className="modal-header"><div className="modal-title-icon"><CalendarDays size={20} /></div><div><h2 id="new-title">Novo agendamento</h2><p>Preencha os dados para reservar o horário.</p></div><button className="icon-button" onClick={() => setSelectedSlot(null)} aria-label="Fechar" disabled={submitting}><X size={20} /></button></div>
-            <form onSubmit={createAppointment}>
+            <div className="modal-header"><div className="modal-title-icon"><CalendarDays size={20} /></div><div><h2 id="new-title">Novo agendamento</h2><p>{selectedSlot ? "Preencha os dados para reservar o horário." : "Escolha médico, data e um horário livre."}</p></div><button className="icon-button" onClick={closeAppointmentModal} aria-label="Fechar" disabled={submitting}><X size={20} /></button></div>
+            {!selectedSlot ? <div className="appointment-picker">
+              <div className="form-grid">
+                <label className="field span-2"><span>Médico</span><select value={selectedDoctorId ?? ""} onChange={(event) => setSelectedDoctorId(event.target.value)}>{doctors.map((doctor) => <option value={doctor.id} key={doctor.id}>{doctor.name}</option>)}</select></label>
+                <label className="field span-2"><span>Data</span><input type="date" min={toDateKey(todayInSaoPaulo())} value={dateKey} onChange={(event) => setSelectedDate(fromDateKey(event.target.value))} /></label>
+              </div>
+              <div className="slot-picker" aria-label="Horários livres">
+                {agendaLoading ? <div className="inline-state"><RefreshCw className="spin" size={16} /> Carregando horários...</div> : availableSlots.length > 0 ? availableSlots.map((slot) => <button type="button" key={slot.id} onClick={() => setSelectedSlot(slot)}><Clock3 size={14} />{slotLocalParts(slot).time}</button>) : <p>Nenhum horário livre para esta seleção.</p>}
+              </div>
+              <div className="modal-actions"><button type="button" className="button button-secondary" onClick={closeAppointmentModal}>Cancelar</button></div>
+            </div> : <form onSubmit={createAppointment}>
               <div className="selected-slot-summary" aria-label="Horário selecionado">
                 <span><small>Médico</small><strong>{selectedSlot.doctor.name}</strong></span>
                 <span><small>Data</small><strong>{displayDate(fromDateKey(slotLocalParts(selectedSlot).date), true)}</strong></span>
@@ -474,11 +570,48 @@ export default function Home() {
                 <label className="field span-2"><span>Exame</span><input name="exam" placeholder="Nome do exame" required disabled={submitting} /></label>
                 {formError ? <p className="form-error span-4" role="alert">{formError}</p> : null}
               </div>
-              <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setSelectedSlot(null)} disabled={submitting}>Cancelar</button><button type="submit" className="button button-primary" disabled={submitting}>{submitting ? <RefreshCw className="spin" size={17} /> : <Check size={18} />}{submitting ? "Confirmando..." : "Confirmar agendamento"}</button></div>
+              <div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setSelectedSlot(null)} disabled={submitting}>Voltar</button><button type="submit" className="button button-primary" disabled={submitting}>{submitting ? <RefreshCw className="spin" size={17} /> : <Check size={18} />}{submitting ? "Confirmando..." : "Confirmar agendamento"}</button></div>
             </form>
+            }
           </div>
         </div>
       ) : null}
+
+      {activeView === "agenda" && blockModalOpen ? (
+        <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="block-title">
+          <button className="modal-backdrop" onClick={() => { if (!blockSaving) setBlockModalOpen(false); }} aria-label="Fechar bloqueios" />
+          <div className="modal-card modal-large">
+            <div className="modal-header"><div className="modal-title-icon"><Ban size={20} /></div><div><h2 id="block-title">Bloquear horários</h2><p>{selectedDoctor?.name} · {displayDate(selectedDate, true)}</p></div><button className="icon-button" onClick={() => setBlockModalOpen(false)} aria-label="Fechar" disabled={blockSaving}><X size={20} /></button></div>
+            <div className="block-editor">
+              <p>Selecione horários livres para bloquear ou horários bloqueados para liberar.</p>
+              <div className="form-grid block-filters">
+                <label className="field span-2"><span>Médico</span><select value={selectedDoctorId ?? ""} onChange={(event) => { setSelectedDoctorId(event.target.value); setSelectedBlockSlots([]); setSelectedUnblocks([]); }}>{doctors.map((doctor) => <option value={doctor.id} key={doctor.id}>{doctor.name}</option>)}</select></label>
+                <label className="field span-2"><span>Data</span><input type="date" min={toDateKey(todayInSaoPaulo())} value={dateKey} onChange={(event) => { setSelectedDate(fromDateKey(event.target.value)); setSelectedBlockSlots([]); setSelectedUnblocks([]); }} /></label>
+              </div>
+              <div className="block-slot-grid">
+                {configuredSlots.map((slot) => {
+                  const blockSelected = selectedBlockSlots.includes(slot.id);
+                  const unblockSelected = !!slot.block && selectedUnblocks.includes(slot.block.id);
+                  const selectable = slot.status === "available" || (slot.status === "blocked" && !!slot.block);
+                  return <button type="button" key={slot.id} disabled={!selectable || blockSaving} className={`${slot.status} ${blockSelected || unblockSelected ? "selected" : ""}`} onClick={() => toggleBlockSlot(slot)}><strong>{slotLocalParts(slot).time}</strong><span>{slot.status === "available" ? "Livre" : slot.status === "blocked" ? "Bloqueado" : slot.status === "booked" ? "Reservado" : "Indisponível"}</span></button>;
+                })}
+              </div>
+              {configuredSlots.length === 0 ? <div className="inline-state">Não há grade de atendimento nesta data.</div> : null}
+              <label className="field"><span>Motivo do bloqueio <small>(opcional)</small></span><textarea value={blockReason} maxLength={500} onChange={(event) => setBlockReason(event.target.value)} placeholder="Ex.: reunião, manutenção ou ausência" disabled={blockSaving} /></label>
+              <div className="modal-actions">
+                <button type="button" className="button button-secondary" onClick={() => setBlockModalOpen(false)} disabled={blockSaving}>Cancelar</button>
+                {selectedUnblocks.length > 0 ? <button type="button" className="button button-secondary" onClick={() => void unblockSelected()} disabled={blockSaving}>{blockSaving ? <RefreshCw className="spin" size={17} /> : <Check size={17} />} Desbloquear ({selectedUnblocks.length})</button> : null}
+                <button type="button" className="button button-primary" onClick={() => setConfirmBlocks(true)} disabled={selectedBlockSlots.length === 0 || blockSaving}><Ban size={17} /> Bloquear ({selectedBlockSlots.length})</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmBlocks ? <div className="modal-layer modal-top" role="alertdialog" aria-modal="true" aria-labelledby="confirm-block-title">
+        <button className="modal-backdrop" onClick={() => { if (!blockSaving) setConfirmBlocks(false); }} aria-label="Cancelar confirmação" />
+        <div className="modal-card confirm-card"><div className="danger-icon"><Ban size={22} /></div><h2 id="confirm-block-title">Confirmar bloqueio?</h2><p>Bloquear {selectedBlockSlots.length} horário(s) de {selectedDoctor?.name} em {dateKey}?</p><div className="confirm-slot-times">{configuredSlots.filter((slot) => selectedBlockSlots.includes(slot.id)).map((slot) => <span key={slot.id}>{slotLocalParts(slot).time}</span>)}</div><div className="modal-actions"><button className="button button-secondary" onClick={() => setConfirmBlocks(false)} disabled={blockSaving}>Voltar</button><button className="button button-primary" onClick={() => void saveBlocks()} disabled={blockSaving}>{blockSaving ? <RefreshCw className="spin" size={17} /> : <Ban size={17} />} Confirmar</button></div></div>
+      </div> : null}
 
       {toast ? <div className={`toast toast-${toast.kind}`} role="status"><span>{toast.kind === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}</span>{toast.message}</div> : null}
     </div>

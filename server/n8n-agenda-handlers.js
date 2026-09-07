@@ -3,6 +3,7 @@ import {
   N8nAgendaError,
 } from "./n8n-agenda-client.js";
 import { isValidDate } from "./scheduling-handlers.js";
+import { ensureScheduleSlots } from "./schedule-slots-repository.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,7 +36,10 @@ export function parseLiveAvailabilityQuery(query) {
   return { date, doctor, doctorId, period, after };
 }
 
-export function createLiveAvailabilityHandler(findAvailability = checkAvailability) {
+export function createLiveAvailabilityHandler(
+  findAvailability = checkAvailability,
+  prepareSchedule = findAvailability === checkAvailability ? ensureScheduleSlots : async () => {},
+) {
   return async function liveAvailabilityHandler(request, response) {
     const input = parseLiveAvailabilityQuery(request.query);
     if (!input) {
@@ -44,6 +48,7 @@ export function createLiveAvailabilityHandler(findAvailability = checkAvailabili
     }
 
     try {
+      await prepareSchedule({ date: input.date, doctor: input.doctorId || input.doctor });
       const availability = await findAvailability(input);
       response.status(200).json({ ok: true, availability });
     } catch (error) {

@@ -126,6 +126,12 @@ button { color: inherit; }
 .time-row.off-hours { min-height: 43px; background: #f6f8f9; }.time-row.off-hours > time { background: #f6f8f9; color: #a1adb4; }
 .available-slot { grid-column: 2; margin: 4px 15px 4px 10px; min-height: 36px; border: 1px dashed transparent; border-radius: 8px; background: transparent; color: #9aa8b0; font-size: 9px; display: flex; gap: 5px; align-items: center; padding: 0 11px; cursor: pointer; opacity: .75; transition: .18s ease; }
 .available-slot:hover { border-color: #9bc8cf; background: #f3fafa; color: var(--petrol); opacity: 1; }
+.schedule-slot { grid-column: 2; margin: 4px 15px 4px 10px; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; padding: 0 11px; display: flex; align-items: center; gap: 6px; font-size: 9px; text-align: left; }
+button.schedule-slot { cursor: pointer; }
+.schedule-slot-blocked { border-color: #efd6ad; background: #fff8ec; color: #91611d; }
+.schedule-slot-blocked:hover { border-color: #d9ad68; background: #fff4df; }
+.schedule-slot-booked { border-color: #d7e8ea; background: #f2f8f9; color: #49717b; }
+.schedule-slot-unavailable { border-color: #e2e6e8; background: #f6f7f8; color: #89969d; }
 .off-hours-label { grid-column: 2; align-self: center; display: flex; align-items: center; gap: 6px; color: #99a5ad; font-size: 9px; padding-left: 20px; }
 .appointment-card { grid-column: 2; position: relative; min-width: 0; margin: 4px 15px 4px 10px; min-height: 50px; border: 1px solid #d7e8ea; background: #f5fbfb; border-radius: 9px; padding: 6px 35px 6px 13px; display: grid; grid-template-columns: minmax(180px,1fr) auto auto; align-items: center; gap: 9px; text-align: left; cursor: pointer; overflow: hidden; transition: .18s ease; }
 .appointment-card:hover { border-color: #7db4bb; background: #f0f9fa; box-shadow: 0 4px 12px rgba(24,77,87,.08); transform: translateY(-1px); }
@@ -162,6 +168,21 @@ button { color: inherit; }
 .input-wrap { position: relative; }.input-wrap svg { position: absolute; left: 10px; top: 11px; color: #8c9da7; }.input-wrap input { padding-left: 35px; }.modal-actions { border-top: 1px solid var(--line-soft); padding: 15px 21px; margin: 19px -21px 0; display: flex; justify-content: flex-end; gap: 8px; }
 .selected-slot-summary { margin-bottom: 16px; padding: 12px; border: 1px solid #dcebec; background: #f5fbfb; border-radius: 10px; display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
 .selected-slot-summary span { display: grid; gap: 4px; }.selected-slot-summary small { color: var(--muted); font-size: 8px; }.selected-slot-summary strong { font-size: 10px; }
+.appointment-picker, .block-editor { padding: 20px 21px 0; }
+.slot-picker { min-height: 95px; margin-top: 17px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; }
+.slot-picker button { height: 36px; min-width: 82px; border: 1px solid #cfe1e5; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f4fafb; color: var(--petrol); font-size: 10px; font-weight: 750; cursor: pointer; }
+.slot-picker button:hover { border-color: #78afb7; background: #edf7f8; }
+.slot-picker > p, .block-editor > p { margin: 0; color: var(--muted); font-size: 10px; }
+.block-slot-grid { margin: 14px 0 17px; display: grid; grid-template-columns: repeat(auto-fill,minmax(92px,1fr)); gap: 8px; }
+.block-slot-grid button { min-height: 54px; border: 1px solid #d5e5e8; border-radius: 9px; display: grid; place-items: center; align-content: center; gap: 3px; background: #f5fafb; color: var(--petrol); cursor: pointer; }
+.block-slot-grid button strong { font-size: 11px; }.block-slot-grid button span { font-size: 8px; }
+.block-slot-grid button.blocked { border-color: #ecd4aa; background: #fff8eb; color: #94621c; }
+.block-slot-grid button.booked, .block-slot-grid button.unavailable { border-color: #e1e6e8; background: #f4f6f7; color: #8a979e; cursor: not-allowed; }
+.block-slot-grid button.selected { border-color: var(--petrol); box-shadow: 0 0 0 3px rgba(7,91,105,.1); }
+.block-editor .field { margin-top: 4px; }
+.block-filters { margin-top: 14px; }
+.confirm-slot-times { margin-top: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.confirm-slot-times span { border: 1px solid #ecd4aa; border-radius: 6px; padding: 5px 8px; background: #fff8eb; color: #8b5d1c; font-size: 9px; font-weight: 800; }
 .form-error { margin: 0; border: 1px solid #efcece; background: var(--danger-soft); color: var(--danger); border-radius: 8px; padding: 10px 11px; font-size: 10px; }
 .patient-mini { padding: 11px; background: #f6f9fa; border-radius: 9px; display: flex; align-items: center; gap: 9px; margin-bottom: 15px; color: var(--petrol); }.patient-mini span { display: grid; gap: 3px; }.patient-mini strong { color: var(--ink); font-size: 10px; }.patient-mini small { color: var(--muted); font-size: 8px; }
 .danger-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--danger-soft); color: var(--danger); display: grid; place-items: center; margin: 0 auto 13px; }.confirm-card h2 { margin: 0 0 9px; font-size: 17px; }.confirm-card > p { margin: 0 auto; max-width: 330px; color: var(--muted); font-size: 11px; line-height: 1.55; }.confirm-card .modal-actions { margin: 23px 0 0; padding: 16px 0 0; justify-content: center; }

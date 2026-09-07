@@ -43,6 +43,16 @@ test("Agenda continua carregando médicos reais", () => {
   assert.equal(page.includes("doctors.map((doctor)"), true);
 });
 
+test("Agenda oferece novo agendamento livre e bloqueio múltiplo com estados reais", () => {
+  assert.equal(page.includes("Escolha médico, data e um horário livre."), true);
+  assert.equal(page.includes("Bloquear horários"), true);
+  assert.equal(page.includes("selectedBlockSlots"), true);
+  assert.equal(page.includes('slot.status === "blocked"'), true);
+  assert.equal(page.includes('slot.status === "booked"'), true);
+  assert.equal(page.includes("postScheduleBlocks"), true);
+  assert.equal(page.includes("deleteScheduleBlocks"), true);
+});
+
 test("navegação preserva menu desktop e abertura mobile sem overflow", () => {
   assert.equal(page.includes('aria-label="Navegação principal"'), true);
   assert.equal(page.includes('setMobileNavOpen(true)'), true);
