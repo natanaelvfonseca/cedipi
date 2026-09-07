@@ -27,6 +27,7 @@ import {
   slotLocalParts,
 } from "./agenda-model";
 import { getWhatsAppPresentation, type WhatsAppStatus } from "./whatsapp-status";
+import { LaraControl } from "./lara-control";
 
 type ViewMode = "day" | "week";
 
@@ -445,9 +446,11 @@ export default function Home() {
 
         <section className="lara-banner">
           <div className="lara-banner-icon"><Sparkles size={18} /></div>
-          <div><strong>Lara IA <span>Atendimento automático ativo</span></strong><p>Agendamentos realizados pela Lara aparecem automaticamente na agenda.</p></div>
+          <div><strong>Lara IA <span>Atendimento automático por IA</span></strong><p>Agendamentos realizados pela Lara aparecem automaticamente na agenda.</p></div>
           <WhatsAppConnection />
         </section>
+
+        <LaraControl notify={showToast} />
 
         <section className="summary-row" aria-label="Resumo da agenda">
           <div className="summary-card"><span>Agendamentos hoje</span><strong>{dayAppointments.length}</strong></div>
