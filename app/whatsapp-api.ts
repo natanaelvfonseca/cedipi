@@ -17,6 +17,14 @@ export type WhatsAppMessage = {
   status: string | null;
 };
 
+export type WhatsAppMessagesPage = {
+  messages: WhatsAppMessage[];
+  pagination: {
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+};
+
 export class WhatsAppInboxApiError extends Error {
   constructor() {
     super("whatsapp_inbox_request_failed");
@@ -65,16 +73,22 @@ export async function getWhatsAppConversations(
 
 export async function getWhatsAppMessages(
   conversationId: string,
+  cursor?: string | null,
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
 ) {
-  const payload = await requestJson<{ ok: true; messages: WhatsAppMessage[] }>(
-    `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages`,
+  const query = new URLSearchParams({ limit: "50" });
+  if (cursor) query.set("cursor", cursor);
+  const payload = await requestJson<{ ok: true } & WhatsAppMessagesPage>(
+    `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages?${query}`,
     { signal },
     fetchImpl,
   );
-  if (!Array.isArray(payload.messages)) throw new WhatsAppInboxApiError();
-  return payload.messages;
+  if (!Array.isArray(payload.messages) || typeof payload.pagination?.hasMore !== "boolean"
+    || (payload.pagination.nextCursor !== null && typeof payload.pagination.nextCursor !== "string")) {
+    throw new WhatsAppInboxApiError();
+  }
+  return { messages: payload.messages, pagination: payload.pagination };
 }
 
 export function whatsappMessageMediaUrl(conversationId: string, messageId: string) {

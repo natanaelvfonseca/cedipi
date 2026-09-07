@@ -1,4 +1,6 @@
 import {
+  defaultMessagesLimit,
+  maximumMessagesLimit,
   whatsappConversationsService,
   WhatsAppConversationError,
 } from "./whatsapp-conversations-service.js";
@@ -48,12 +50,25 @@ export function createListWhatsAppConversationsHandler(service = whatsappConvers
 export function createListWhatsAppMessagesHandler(service = whatsappConversationsService) {
   return async function listWhatsAppMessagesHandler(request, response) {
     const identity = parsedIdentity(request.params.conversationId);
+    const rawLimit = request.query?.limit;
+    const limit = rawLimit === undefined ? defaultMessagesLimit
+      : typeof rawLimit === "string" && /^\d+$/.test(rawLimit) ? Number(rawLimit) : NaN;
     if (!identity) {
       response.status(400).json({ ok: false, error: "invalid_conversation" });
       return;
     }
+    if (!Number.isInteger(limit) || limit < 1 || limit > maximumMessagesLimit) {
+      response.status(400).json({ ok: false, error: "invalid_limit" });
+      return;
+    }
+    const cursor = request.query?.cursor;
+    if (cursor !== undefined && typeof cursor !== "string") {
+      response.status(400).json({ ok: false, error: "invalid_cursor" });
+      return;
+    }
     try {
-      response.status(200).json({ ok: true, messages: await service.listMessages(identity.remoteJid) });
+      const result = await service.listMessages(identity.remoteJid, { limit, cursor: cursor ?? null });
+      response.status(200).json({ ok: true, ...result });
     } catch (error) {
       respondWithError(error, response);
     }

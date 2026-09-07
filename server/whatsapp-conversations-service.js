@@ -12,12 +12,15 @@ export class WhatsAppConversationError extends Error {
 }
 
 function pageFromMessages(payload) {
-  if (Array.isArray(payload)) return { records: payload, pages: 1 };
+  if (Array.isArray(payload)) return { records: payload, pages: 1, currentPage: 1 };
   const messages = payload?.messages ?? payload?.data ?? payload;
-  if (Array.isArray(messages)) return { records: messages, pages: 1 };
+  if (Array.isArray(messages)) return { records: messages, pages: 1, currentPage: 1 };
   if (Array.isArray(messages?.records)) {
     const pages = Number.isInteger(messages.pages) && messages.pages > 0 ? messages.pages : 1;
-    return { records: messages.records, pages };
+    const currentPage = Number.isInteger(messages.currentPage) && messages.currentPage > 0
+      ? messages.currentPage
+      : 1;
+    return { records: messages.records, pages, currentPage };
   }
   throw new WhatsAppConversationError("evolution_invalid_response");
 }
@@ -113,6 +116,31 @@ function mapExternalError(error) {
 }
 
 const maximumMediaBytes = 50 * 1024 * 1024;
+export const defaultMessagesLimit = 50;
+export const maximumMessagesLimit = 100;
+const cursorVersion = 1;
+
+function encodeMessagesCursor({ page, limit, snapshot }) {
+  return Buffer.from(JSON.stringify({ v: cursorVersion, p: page, l: limit, s: snapshot })).toString("base64url");
+}
+
+function decodeMessagesCursor(value, limit) {
+  if (typeof value !== "string" || !value || value.length > 300 || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new WhatsAppConversationError("invalid_cursor", 400);
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    const snapshotDate = new Date(parsed?.s);
+    if (parsed?.v !== cursorVersion || !Number.isInteger(parsed?.p) || parsed.p < 2
+      || parsed?.l !== limit || Number.isNaN(snapshotDate.getTime())
+      || snapshotDate.toISOString() !== parsed.s) {
+      throw new Error("invalid cursor");
+    }
+    return { page: parsed.p, snapshot: parsed.s };
+  } catch {
+    throw new WhatsAppConversationError("invalid_cursor", 400);
+  }
+}
 
 function messageRemoteJids(record) {
   return [record?.key?.remoteJid, record?.key?.remoteJidAlt, record?.remoteJid]
@@ -194,6 +222,7 @@ async function findOwnedMessage(client, remoteJid, messageId) {
 export function createWhatsAppConversationsService({
   evolution,
   aiControl,
+  now = () => new Date(),
 } = {}) {
   const evolutionClient = () => evolution ?? createEvolutionClient();
   const aiControlClient = () => aiControl ?? createN8nAiControlClient();
@@ -211,31 +240,36 @@ export function createWhatsAppConversationsService({
       }
     },
 
-    async listMessages(remoteJid) {
+    async listMessages(remoteJid, { limit = defaultMessagesLimit, cursor = null } = {}) {
       try {
+        if (!Number.isInteger(limit) || limit < 1 || limit > maximumMessagesLimit) {
+          throw new WhatsAppConversationError("invalid_limit", 400);
+        }
         const client = evolutionClient();
-        const records = [];
-        let currentPage = 1;
-        let totalPages = 1;
-
-        do {
-          const result = pageFromMessages(await client.findMessages(remoteJid, {
-            page: currentPage,
-            offset: 100,
-          }));
-          records.push(...result.records);
-          totalPages = result.pages;
-          currentPage += 1;
-        } while (currentPage <= totalPages);
-
-        const uniqueRecords = [...new Map(records.map((record, index) => [
+        const snapshot = cursor ? null : now().toISOString();
+        const cursorData = cursor ? decodeMessagesCursor(cursor, limit) : { page: 1, snapshot };
+        const result = pageFromMessages(await client.findMessages(remoteJid, {
+          page: cursorData.page,
+          offset: limit,
+          ...(cursor ? { until: cursorData.snapshot } : {}),
+        }));
+        const uniqueRecords = [...new Map(result.records.map((record, index) => [
           record?.key?.id ?? record?.id ?? `record-${index}`,
           record,
         ])).values()];
-
-        return uniqueRecords
+        const messages = uniqueRecords
           .map(normalizeMessage)
           .sort((left, right) => (left.timestamp ?? "").localeCompare(right.timestamp ?? ""));
+        const hasMore = cursorData.page < result.pages;
+        return {
+          messages,
+          pagination: {
+            hasMore,
+            nextCursor: hasMore
+              ? encodeMessagesCursor({ page: cursorData.page + 1, limit, snapshot: cursorData.snapshot })
+              : null,
+          },
+        };
       } catch (error) {
         throw mapExternalError(error);
       }
@@ -301,7 +335,7 @@ function service() {
 
 export const whatsappConversationsService = {
   listConversations: () => service().listConversations(),
-  listMessages: (remoteJid) => service().listMessages(remoteJid),
+  listMessages: (remoteJid, pagination) => service().listMessages(remoteJid, pagination),
   getMedia: (remoteJid, messageId) => service().getMedia(remoteJid, messageId),
   sendManualMessage: (input) => service().sendManualMessage(input),
   getAiControl: (phone) => service().getAiControl(phone),

@@ -35,7 +35,7 @@ test("Evolution usa as rotas de inbox da instância exatamente Cedipi", async ()
       },
     },
     page: 1,
-    offset: 100,
+    offset: 50,
   });
   assert.deepEqual(JSON.parse(requests[2].options.body), {
     number: "5547999999999",
@@ -61,6 +61,30 @@ test("findMessages preserva o JID original sem aplicar o nono dígito", async ()
   assert.equal(body.where.key.remoteJidAlt, originalJid);
   assert.equal(JSON.stringify(body).includes("5547991935149"), false);
   assert.equal(body.page, 2);
+});
+
+test("findMessages usa somente page, offset e filtro temporal suportados pela Evolution 2.3.7", async () => {
+  let body;
+  const client = createEvolutionClient({
+    baseUrl: "https://evolution.example",
+    apiKey: "secret",
+    instanceName: "Cedipi",
+    fetchImpl: async (_url, options) => {
+      body = JSON.parse(options.body);
+      return Response.json({ messages: { records: [], pages: 3, currentPage: 2 } });
+    },
+  });
+  await client.findMessages("554791935149@s.whatsapp.net", {
+    page: 2,
+    offset: 50,
+    until: "2026-09-07T12:00:00.000Z",
+  });
+  assert.deepEqual(body.where.messageTimestamp, {
+    gte: "1970-01-01T00:00:00.000Z",
+    lte: "2026-09-07T12:00:00.000Z",
+  });
+  assert.equal("limit" in body, false);
+  assert.equal("perPage" in body, false);
 });
 
 test("mídia usa a rota oficial da Evolution e envia o objeto real da mensagem", async () => {

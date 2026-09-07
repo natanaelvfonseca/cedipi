@@ -71,30 +71,67 @@ test("normaliza texto, áudio, imagem e documento sem baixar mídia", () => {
   }).text, "exame.pdf");
 });
 
-test("busca todas as páginas, preserva os dois lados e ordena da mais antiga", async () => {
+test("carrega somente as últimas 50, deduplica e ordena da mais antiga", async () => {
   const requests = [];
+  const records = Array.from({ length: 50 }, (_, index) => ({
+    key: { id: String(1000 - index), fromMe: index % 2 === 0 },
+    message: { conversation: `Mensagem ${1000 - index}` },
+    messageTimestamp: 1788782400 - index,
+  }));
+  records.push(records[0]);
   const service = createWhatsAppConversationsService({
+    now: () => new Date("2026-09-07T15:00:00.000Z"),
     evolution: {
       async findMessages(value, pagination) {
         requests.push({ value, pagination });
-        if (pagination.page === 1) {
-          return { messages: { pages: 2, currentPage: 1, records: [
-            { key: { id: "2", fromMe: true }, message: { conversation: "Segundo" }, messageTimestamp: 1788782460 },
-          ] } };
-        }
-        return { messages: { pages: 2, currentPage: 2, records: [
-          { key: { id: "1", fromMe: false }, message: { conversation: "Primeiro" }, messageTimestamp: 1788782400 },
-        ] } };
+        return { messages: { pages: 400, currentPage: 1, records } };
       },
     },
   });
-  const messages = await service.listMessages(jid);
+  const result = await service.listMessages(jid);
+  assert.deepEqual(requests, [{ value: jid, pagination: { page: 1, offset: 50 } }]);
+  assert.equal(result.messages.length, 50);
+  assert.equal(result.messages[0].id, "951");
+  assert.equal(result.messages.at(-1).id, "1000");
+  assert.equal(result.pagination.hasMore, true);
+  assert.equal(typeof result.pagination.nextCursor, "string");
+});
+
+test("cursor busca somente a próxima página dentro do snapshot", async () => {
+  const requests = [];
+  const service = createWhatsAppConversationsService({
+    now: () => new Date("2026-09-07T15:00:00.000Z"),
+    evolution: { async findMessages(value, pagination) {
+      requests.push({ value, pagination });
+      return { messages: { pages: 3, currentPage: pagination.page, records: [
+        { key: { id: `page-${pagination.page}`, fromMe: false }, message: { conversation: "Oi" }, messageTimestamp: 1788782400 },
+      ] } };
+    } },
+  });
+  const first = await service.listMessages(jid);
+  const second = await service.listMessages(jid, { limit: 50, cursor: first.pagination.nextCursor });
   assert.deepEqual(requests, [
-    { value: jid, pagination: { page: 1, offset: 100 } },
-    { value: jid, pagination: { page: 2, offset: 100 } },
+    { value: jid, pagination: { page: 1, offset: 50 } },
+    { value: jid, pagination: { page: 2, offset: 50, until: "2026-09-07T15:00:00.000Z" } },
   ]);
-  assert.deepEqual(messages.map((message) => message.id), ["1", "2"]);
-  assert.deepEqual(messages.map((message) => message.fromMe), [false, true]);
+  assert.equal(second.messages[0].id, "page-2");
+  assert.equal(second.pagination.hasMore, true);
+});
+
+test("última página encerra o cursor e cursor inválido retorna 400", async () => {
+  const service = createWhatsAppConversationsService({ evolution: { async findMessages() {
+    return { messages: { pages: 1, currentPage: 1, records: [] } };
+  } } });
+  const result = await service.listMessages(jid, { limit: 100 });
+  assert.deepEqual(result.pagination, { hasMore: false, nextCursor: null });
+  await assert.rejects(
+    service.listMessages(jid, { limit: 50, cursor: "cursor-invalido" }),
+    (error) => error.code === "invalid_cursor" && error.status === 400,
+  );
+  await assert.rejects(
+    service.listMessages(jid, { limit: 101 }),
+    (error) => error.code === "invalid_limit" && error.status === 400,
+  );
 });
 
 function mediaRecord(type, id = "media-id", remoteJid = jid, fromMe = false) {

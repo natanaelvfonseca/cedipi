@@ -16,9 +16,11 @@ test("seleção carrega mensagens pelo id e IA pelo phone", () => {
   assert.equal(source.includes("getConversationAiControl(conversation.phone"), true);
 });
 
-test("sucesso limpa campo, atualiza mensagens e consulta IA novamente", () => {
+test("sucesso limpa campo, insere a resposta sem recarregar o histórico e consulta IA", () => {
   assert.equal(source.includes('setDraft("")'), true);
-  assert.equal(source.includes("loadMessages(selectedConversation, undefined, false, true, true)"), true);
+  const submitSection = source.slice(source.indexOf("async function submitMessage"), source.indexOf("function handleComposerKeyDown"));
+  assert.equal(submitSection.includes("mergeMessages(current, [sent])"), true);
+  assert.equal(submitSection.includes("loadRecentMessages"), false);
   assert.equal(source.includes("loadIndividualControl(selectedConversation, undefined, true)"), true);
 });
 
@@ -42,9 +44,26 @@ test("mídias são carregadas separadamente e possuem fallbacks visuais", () => 
 });
 
 test("polling de mensagens não inclui download de mídia", () => {
-  const pollingTask = source.match(/task: \(\) => loadMessages\([^\n]+/g) ?? [];
+  const pollingTask = source.match(/task: \(\) => loadRecentMessages\([^\n]+/g) ?? [];
   assert.equal(pollingTask.length > 0, true);
   assert.equal(pollingTask.some((line) => line.includes("getWhatsAppMessageMedia")), false);
+});
+
+test("abertura carrega lote recente e inicia scroll no final", () => {
+  assert.equal(source.includes("getWhatsAppMessages(conversation.id, null, signal)"), true);
+  assert.equal(source.includes("scrollTop = messagesPane.current.scrollHeight"), true);
+});
+
+test("topo carrega anteriores uma vez e respeita hasMore", () => {
+  assert.equal(source.includes("shouldLoadOlderHistory(pane.scrollTop, messagesPagination.hasMore)"), true);
+  assert.equal(source.includes("acquireHistoryLoadLock(olderMessagesRequestActive)"), true);
+  assert.equal(source.includes("Carregando mensagens anteriores..."), true);
+});
+
+test("prepend preserva scroll e troca de conversa invalida respostas antigas", () => {
+  assert.equal(source.includes("scrollTopAfterPrepend(snapshot, pane.scrollHeight)"), true);
+  assert.equal(source.includes("selectedIdRef.current !== conversation.id"), true);
+  assert.equal(source.includes("olderMessagesAbortController.current?.abort()"), true);
 });
 
 test("imagens carregam apenas quando entram na área visível", () => {

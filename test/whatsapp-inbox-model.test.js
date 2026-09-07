@@ -2,14 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   acquireConversationSendLock,
+  acquireHistoryLoadLock,
   filterConversations,
   formatMessageTime,
   isSendableMessage,
+  isCurrentConversationResponse,
   mergeMessages,
   messagePresentation,
   messageSide,
   sortMessages,
+  scrollTopAfterPrepend,
   startControlledPolling,
+  shouldLoadOlderHistory,
   whatsappDisplayTimezone,
 } from "../app/whatsapp-model.ts";
 
@@ -61,6 +65,40 @@ test("mensagem enviada é incorporada ao histórico sem duplicar", () => {
   const first = { id: "1", timestamp: "2026-09-07T12:00:00Z" };
   const sent = { id: "2", timestamp: "2026-09-07T12:01:00Z" };
   assert.deepEqual(mergeMessages([first], [sent, sent]).map((item) => item.id), ["1", "2"]);
+});
+
+test("polling adiciona novas sem duplicar ou remover histórico antigo", () => {
+  const old = { id: "old", timestamp: "2026-09-07T10:00:00Z" };
+  const recent = { id: "recent", timestamp: "2026-09-07T12:00:00Z", status: "PENDING" };
+  const updated = { ...recent, status: "READ" };
+  const next = { id: "next", timestamp: "2026-09-07T12:01:00Z" };
+  const merged = mergeMessages([old, recent], [updated, next, next]);
+  assert.deepEqual(merged.map((item) => item.id), ["old", "recent", "next"]);
+  assert.equal(merged[1].status, "READ");
+});
+
+test("prepend preserva a posição visual do scroll", () => {
+  assert.equal(scrollTopAfterPrepend({ scrollHeight: 1200, scrollTop: 80 }, 2600), 1480);
+});
+
+test("lock impede duas cargas simultâneas do histórico", () => {
+  const lock = { current: false };
+  assert.equal(acquireHistoryLoadLock(lock), true);
+  assert.equal(acquireHistoryLoadLock(lock), false);
+});
+
+test("resposta atrasada de outra conversa ou geração é ignorada", () => {
+  const base = { requestedConversationId: "joao", requestVersion: 1, currentVersion: 1 };
+  assert.equal(isCurrentConversationResponse({ ...base, selectedConversationId: "joao" }), true);
+  assert.equal(isCurrentConversationResponse({ ...base, selectedConversationId: "maria" }), false);
+  assert.equal(isCurrentConversationResponse({ ...base, selectedConversationId: "joao", currentVersion: 2 }), false);
+  assert.equal(isCurrentConversationResponse({ ...base, selectedConversationId: "joao", aborted: true }), false);
+});
+
+test("hasMore=false encerra o infinite scroll", () => {
+  assert.equal(shouldLoadOlderHistory(20, true), true);
+  assert.equal(shouldLoadOlderHistory(20, false), false);
+  assert.equal(shouldLoadOlderHistory(200, true), false);
 });
 
 test("polling cria um timer e impede tarefas sobrepostas", async () => {

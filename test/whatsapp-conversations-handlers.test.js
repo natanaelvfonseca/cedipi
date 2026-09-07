@@ -82,24 +82,57 @@ test("GET lista conversas normalizadas", async () => {
 test("GET busca mensagens usando o JID individual", async () => {
   let received;
   const response = responseRecorder();
-  await createListWhatsAppMessagesHandler({ async listMessages(jid) { received = jid; return []; } })(
-    { params: { conversationId: "5547999999999@s.whatsapp.net" } },
+  const result = { messages: [], pagination: { hasMore: false, nextCursor: null } };
+  await createListWhatsAppMessagesHandler({ async listMessages(jid, pagination) { received = { jid, pagination }; return result; } })(
+    { params: { conversationId: "5547999999999@s.whatsapp.net" }, query: {} },
     response,
   );
-  assert.equal(received, "5547999999999@s.whatsapp.net");
-  assert.deepEqual(response.body, { ok: true, messages: [] });
+  assert.deepEqual(received, { jid: "5547999999999@s.whatsapp.net", pagination: { limit: 50, cursor: null } });
+  assert.deepEqual(response.body, { ok: true, ...result });
 });
 
 test("GET preserva JID original e separa telefone normalizado", async () => {
   let received;
   const response = responseRecorder();
-  await createListWhatsAppMessagesHandler({ async listMessages(jid) { received = jid; return []; } })(
-    { params: { conversationId: "554791935149@s.whatsapp.net" } },
+  await createListWhatsAppMessagesHandler({ async listMessages(jid) { received = jid; return { messages: [], pagination: { hasMore: false, nextCursor: null } }; } })(
+    { params: { conversationId: "554791935149@s.whatsapp.net" }, query: {} },
     response,
   );
   assert.equal(received, "554791935149@s.whatsapp.net");
   assert.notEqual(received, "5547991935149@s.whatsapp.net");
   assert.equal(response.statusCode, 200);
+});
+
+test("GET aceita limit até 100 e encaminha cursor opaco", async () => {
+  let received;
+  const response = responseRecorder();
+  await createListWhatsAppMessagesHandler({ async listMessages(_jid, pagination) {
+    received = pagination;
+    return { messages: [], pagination: { hasMore: false, nextCursor: null } };
+  } })({ params: { conversationId: jid }, query: { limit: "100", cursor: "opaque_cursor" } }, response);
+  assert.deepEqual(received, { limit: 100, cursor: "opaque_cursor" });
+  assert.equal(response.statusCode, 200);
+});
+
+for (const limit of ["0", "101", "abc", ["50"]]) {
+  test(`GET rejeita limit inválido ${JSON.stringify(limit)}`, async () => {
+    let called = false;
+    const response = responseRecorder();
+    await createListWhatsAppMessagesHandler({ async listMessages() { called = true; } })(
+      { params: { conversationId: jid }, query: { limit } }, response,
+    );
+    assert.deepEqual(response.body, { ok: false, error: "invalid_limit" });
+    assert.equal(called, false);
+  });
+}
+
+test("GET devolve cursor inválido como erro 400", async () => {
+  const response = responseRecorder();
+  await createListWhatsAppMessagesHandler({ async listMessages() {
+    throw new WhatsAppConversationError("invalid_cursor", 400);
+  } })({ params: { conversationId: jid }, query: { cursor: "bad" } }, response);
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.body, { ok: false, error: "invalid_cursor" });
 });
 
 test("POST rejeita mensagem vazia", async () => {

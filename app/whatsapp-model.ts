@@ -92,6 +92,39 @@ export function acquireConversationSendLock(lock: { current: boolean }) {
   return true;
 }
 
+export function acquireHistoryLoadLock(lock: { current: boolean }) {
+  if (lock.current) return false;
+  lock.current = true;
+  return true;
+}
+
+export function scrollTopAfterPrepend(
+  snapshot: { scrollHeight: number; scrollTop: number },
+  nextScrollHeight: number,
+) {
+  return snapshot.scrollTop + Math.max(0, nextScrollHeight - snapshot.scrollHeight);
+}
+
+export function isCurrentConversationResponse({
+  selectedConversationId,
+  requestedConversationId,
+  requestVersion,
+  currentVersion,
+  aborted = false,
+}: {
+  selectedConversationId: string | null;
+  requestedConversationId: string;
+  requestVersion: number;
+  currentVersion: number;
+  aborted?: boolean;
+}) {
+  return !aborted && selectedConversationId === requestedConversationId && requestVersion === currentVersion;
+}
+
+export function shouldLoadOlderHistory(scrollTop: number, hasMore: boolean) {
+  return hasMore && scrollTop < 120;
+}
+
 type PollingOptions = {
   task: () => Promise<void>;
   intervalMs: number;

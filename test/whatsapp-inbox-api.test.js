@@ -49,17 +49,27 @@ test("falha de mídia não expõe corpo técnico", async () => {
 
 test("usa o JID original codificado para buscar mensagens", async () => {
   let url;
-  await getWhatsAppMessages(conversation.id, undefined, async (requested) => {
+  const result = await getWhatsAppMessages(conversation.id, null, undefined, async (requested) => {
     url = requested;
-    return Response.json({ ok: true, messages: [] });
+    return Response.json({ ok: true, messages: [], pagination: { hasMore: true, nextCursor: "next" } });
   });
-  assert.equal(url, "/api/whatsapp/conversations/554791935149%40s.whatsapp.net/messages");
+  assert.equal(url, "/api/whatsapp/conversations/554791935149%40s.whatsapp.net/messages?limit=50");
   assert.equal(url.includes(conversation.phone), false);
+  assert.deepEqual(result.pagination, { hasMore: true, nextCursor: "next" });
+});
+
+test("cursor é enviado somente para buscar mensagens anteriores", async () => {
+  let url;
+  await getWhatsAppMessages(conversation.id, "opaque", undefined, async (requested) => {
+    url = requested;
+    return Response.json({ ok: true, messages: [], pagination: { hasMore: false, nextCursor: null } });
+  });
+  assert.equal(url.endsWith("?limit=50&cursor=opaque"), true);
 });
 
 test("resposta de mensagens inválida vira falha tratável da inbox", async () => {
   await assert.rejects(
-    getWhatsAppMessages(conversation.id, undefined, async () => Response.json({ ok: true, conversations: [] })),
+    getWhatsAppMessages(conversation.id, null, undefined, async () => Response.json({ ok: true, conversations: [] })),
     { name: "WhatsAppInboxApiError" },
   );
 });
