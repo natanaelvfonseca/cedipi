@@ -49,6 +49,16 @@ O gate do n8n deve continuar apenas quando `globalEnabled === true`. HTTP não-2
 ou resposta sem boolean representam falha de integração e não devem ser tratados como pausa
 solicitada pelo usuário.
 
+O node `Buscar slots cedipi_core` usa a mesma autenticação interna:
+
+```text
+GET /api/internal/scheduling/availability?date=YYYY-MM-DD&doctor=Nome
+x-cedipi-internal-secret: valor de N8N_INTERNAL_API_SECRET
+```
+
+A rota `/api/scheduling/availability` permanece reservada ao painel autenticado. As duas
+rotas executam o mesmo handler e repositório de disponibilidade.
+
 ## Build de produção
 
 ```bash

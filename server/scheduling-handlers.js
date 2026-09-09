@@ -34,7 +34,9 @@ export function createListAvailabilityHandler(findAvailability = listAvailabilit
     const date = request.query.date;
     const doctor = typeof request.query.doctor === "string" && request.query.doctor.length > 0
       ? request.query.doctor
-      : undefined;
+      : typeof request.query.doctorId === "string" && request.query.doctorId.length > 0
+        ? request.query.doctorId
+        : undefined;
 
     if (!isValidDate(date)) {
       response.status(400).json({ ok: false, error: "invalid_date" });

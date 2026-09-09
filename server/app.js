@@ -43,6 +43,7 @@ import {
 import { createRequireAuth, requireAdmin, requirePasswordChanged, verifySameOrigin } from "./auth-middleware.js";
 import { createRequireInternalSecret } from "./internal-auth.js";
 import { getGlobalAiEnabled, setGlobalAiEnabled } from "./ai-control-repository.js";
+import { listAvailability } from "./scheduling-repository.js";
 
 const serverDirectory = path.dirname(fileURLToPath(import.meta.url));
 const distDirectory = path.resolve(serverDirectory, "../dist");
@@ -52,6 +53,7 @@ export function createApp({
   loginRateLimiter = createLoginRateLimiter(),
   aiControlReader = getGlobalAiEnabled,
   aiControlWriter = setGlobalAiEnabled,
+  availabilityReader = listAvailability,
   internalApiSecret = process.env.N8N_INTERNAL_API_SECRET,
 } = {}) {
   const app = express();
@@ -66,6 +68,11 @@ export function createApp({
     "/api/internal/ai-control",
     createRequireInternalSecret(internalApiSecret),
     createGetAiControlHandler(aiControlReader),
+  );
+  app.get(
+    "/api/internal/scheduling/availability",
+    createRequireInternalSecret(internalApiSecret),
+    createListAvailabilityHandler(availabilityReader),
   );
 
   app.use("/api", createRequireAuth(authService));
@@ -89,7 +96,7 @@ export function createApp({
   app.get("/api/whatsapp/conversations/:phone/ai-control", createGetConversationAiControlHandler());
   app.patch("/api/whatsapp/conversations/:phone/ai-control", createPatchConversationAiControlHandler());
   app.get("/api/doctors", createListDoctorsHandler());
-  app.get("/api/scheduling/availability", createListAvailabilityHandler());
+  app.get("/api/scheduling/availability", createListAvailabilityHandler(availabilityReader));
   app.get("/api/scheduling/live-availability", createLiveAvailabilityHandler());
   app.get("/api/scheduling/blocks", createListScheduleBlocksHandler());
   app.post("/api/scheduling/blocks", createPostScheduleBlocksHandler());

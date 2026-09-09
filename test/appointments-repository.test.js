@@ -14,8 +14,8 @@ function fakePool(patientId) {
       if (sql.includes("FROM doctor_availability")) return { rows: [{
         id: slotId,
         doctor_id: doctorId,
-        starts_at: new Date("2026-09-09T12:00:00.000Z"),
-        ends_at: new Date("2026-09-09T12:20:00.000Z"),
+        starts_at: new Date("2030-09-09T12:00:00.000Z"),
+        ends_at: new Date("2030-09-09T12:20:00.000Z"),
         status: "available",
         in_schedule: true,
       }] };
@@ -29,8 +29,8 @@ function fakePool(patientId) {
         id: "appointment-1",
         status: "pending",
         exam_name: "Exame",
-        starts_at: new Date("2026-09-09T12:00:00.000Z"),
-        ends_at: new Date("2026-09-09T12:20:00.000Z"),
+        starts_at: new Date("2030-09-09T12:00:00.000Z"),
+        ends_at: new Date("2030-09-09T12:20:00.000Z"),
       }] };
       return { rows: [] };
     },

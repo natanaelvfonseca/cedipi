@@ -61,6 +61,17 @@ test("GET availability exige data válida e encaminha filtro de médico", async 
   });
 });
 
+test("GET availability aceita doctorId como filtro compatível", async () => {
+  const response = responseRecorder();
+  let received;
+  await createListAvailabilityHandler(async (filters) => { received = filters; return []; })(
+    { query: { date: "2026-09-09", doctorId: "doctor-id" } },
+    response,
+  );
+  assert.deepEqual(received, { date: "2026-09-09", doctor: "doctor-id" });
+  assert.equal(response.statusCode, 200);
+});
+
 test("GET appointments devolve lista vazia", async () => {
   const response = responseRecorder();
   await createListAppointmentsHandler(async () => [])({}, response);
