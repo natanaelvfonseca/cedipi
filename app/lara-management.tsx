@@ -4,6 +4,7 @@ import { apiFetch } from "./api-fetch";
 
 type Knowledge = { id: string; title: string; active: boolean; created_at: string };
 type Handoff = { id: string; phone: string; reason: string; created_at: string; status: "open" | "closed" };
+type OfficialDoc = { source_number: number; filename: string; imported_at: string };
 type Exam = { code: string; name: string; price_cents: number;
   duration_minutes: number | null; doctor_names: string[];
   medical_approval: boolean; doctor_review: boolean; add_on_only: boolean;
@@ -53,7 +54,11 @@ export function LaraManagement({
   const [bookingRequests,setBookingRequests] = useState<BookingRequest[]>([]);
   const [search,setSearch] = useState("");
   const [readiness,setReadiness] = useState<Readiness | null>(null);
-  const [tab,setTab] = useState<"handoffs" | "knowledge" | "catalog" | "requests">("catalog");
+  const [officialDocs,setOfficialDocs] = useState<OfficialDoc[]>([]);
+  const [openedDoc,setOpenedDoc] = useState<number | null>(null);
+  const [openedContent,setOpenedContent] = useState("");
+  const [loadingDoc,setLoadingDoc] = useState(false);
+  const [tab,setTab] = useState<"handoffs" | "knowledge" | "catalog" | "requests" | "documents">("catalog");
   const [loading,setLoading] = useState(true);
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState<string | null>(null);
@@ -66,13 +71,14 @@ export function LaraManagement({
       const [knowledge, handoffsResult, catalog, bookings, statusResult] = await Promise.all([
         requestApi<{ ok: true; sources: Knowledge[] }>("/api/lara/knowledge"),
         requestApi<{ ok: true; handoffs: Handoff[] }>("/api/lara/handoffs"),
-        requestApi<{ ok: true; exams: Exam[] }>("/api/lara/catalog"),
+        requestApi<{ ok: true; exams: Exam[]; documents: OfficialDoc[] }>("/api/lara/catalog"),
         requestApi<{ ok: true; requests: BookingRequest[] }>("/api/lara/booking-requests"),
         requestApi<{ ok: true; readiness: Readiness }>("/api/lara/readiness"),
       ]);
       setSources(knowledge.sources);
       setHandoffs(handoffsResult.handoffs);
       setExams(catalog.exams);
+      setOfficialDocs(catalog.documents);
       setBookingRequests(bookings.requests);
       setReadiness(statusResult.readiness);
     } catch {
@@ -111,6 +117,21 @@ export function LaraManagement({
       await refresh();
     } catch { setError("Não foi possível alterar a fonte."); }
     finally { setSaving(false); }
+  }
+
+  async function openOfficialDoc(item: OfficialDoc) {
+    if (loadingDoc) return;
+    if (openedDoc===item.source_number) { setOpenedDoc(null); setOpenedContent(""); return; }
+    setLoadingDoc(true);
+    try {
+      const detail = await requestApi<{ok:true;content:string}>(
+        "/api/lara/official-documents/" + item.source_number
+      );
+      setOpenedDoc(item.source_number);
+      setOpenedContent(detail.content);
+    } catch {
+      setError("Não foi possível abrir o documento oficial.");
+    } finally {setLoadingDoc(false);}
   }
 
   async function closeHandoff(item: Handoff) {
@@ -154,6 +175,8 @@ export function LaraManagement({
         onClick={() => setTab("catalog")}>Catálogo oficial ({exams.length})</button>
       <button role="tab" aria-selected={tab === "requests"} className={tab === "requests" ? "active" : ""}
         onClick={() => setTab("requests")}>Solicitações ({bookingRequests.length})</button>
+      <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "active" : ""}
+        onClick={() => setTab("documents")}>Documentos ({officialDocs.length})</button>
       <button role="tab" aria-selected={tab === "handoffs"} className={tab === "handoffs" ? "active" : ""}
         onClick={() => setTab("handoffs")}>Encaminhamentos ({handoffs.length})</button>
       <button role="tab" aria-selected={tab === "knowledge"} className={tab === "knowledge" ? "active" : ""}
@@ -181,6 +204,26 @@ export function LaraManagement({
                     <small>Requer conferência da equipe {exam.medical_approval ? "e aprovação médica" : ""}</small> : null}
                   {exam.preparation ? <small>Preparo: {exam.preparation}</small> : null}
                 </span>
+              </div>
+            ))}</div>}
+        </section>
+      ) : tab === "documents" ? (
+        <section className="lara-admin-panel">
+          <h2>Seis documentos oficiais CEDIPI</h2>
+          <p className="lara-admin-note">Consulta administrativa restrita. Contém protocolos clínicos e, em pagamentos, dados Pix. A Lara não entrega esses detalhes automaticamente sem validação.</p>
+          {!officialDocs.length ? <p className="lara-admin-empty">Documentos não importados.</p> :
+            <div className="lara-admin-list">{officialDocs.map((item) => (
+              <div className="lara-admin-item" key={item.source_number}>
+                <span><strong>{item.source_number}. {item.filename}</strong>
+                  <small>Fonte oficial conferida</small>
+                  {openedDoc===item.source_number ?
+                    <pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:"0.86rem",
+                      marginTop:12,maxHeight:500,overflowY:"auto"}}>{openedContent}</pre> : null}
+                </span>
+                <button className="button button-secondary" disabled={loadingDoc}
+                  onClick={() => void openOfficialDoc(item)}>
+                  {openedDoc===item.source_number?"Fechar":"Consultar"}
+                </button>
               </div>
             ))}</div>}
         </section>

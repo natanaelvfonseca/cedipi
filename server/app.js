@@ -7,6 +7,7 @@ import {
   createListOfficialCatalogHandler,
   createListBookingRequestsHandler,
   createLaraReadinessHandler,
+  createReadOfficialDocumentHandler,
 } from "./cedipi-clinic-handlers.js";
 import {
   createListLaraKnowledgeHandler,
@@ -103,6 +104,8 @@ export function createApp({
   app.get("/api/lara/readiness", requireAdmin, createLaraReadinessHandler());
   app.get("/api/lara/catalog", requireAdmin, createListOfficialCatalogHandler());
   app.get("/api/lara/booking-requests", requireAdmin, createListBookingRequestsHandler());
+  app.get("/api/lara/official-documents/:number", requireAdmin,
+    createReadOfficialDocumentHandler());
   app.get("/api/lara/knowledge", requireAdmin, createListLaraKnowledgeHandler());
   app.post("/api/lara/knowledge", requireAdmin, createAddLaraKnowledgeHandler());
   app.get("/api/lara/handoffs", requireAdmin, createListLaraHandoffsHandler());

@@ -1,5 +1,5 @@
 import {
-  listClinicCatalogOverview, listPendingBookingRequests,
+  listClinicCatalogOverview, listPendingBookingRequests, readOfficialDocument,
 } from "./cedipi-clinic-repository.js";
 
 export function createListOfficialCatalogHandler(list = listClinicCatalogOverview) {
@@ -45,6 +45,24 @@ export function createLaraReadinessHandler(overview = listClinicCatalogOverview)
       }});
     } catch {
       res.status(503).json({ok:false,error:"lara_readiness_unavailable"});
+    }
+  };
+}
+
+export function createReadOfficialDocumentHandler(read = readOfficialDocument) {
+  return async (req,res)=>{
+    const number=Number(req.params.number);
+    if (!Number.isInteger(number) || number<1 || number>6) {
+      res.status(400).json({ok:false,error:"invalid_document"});
+      return;
+    }
+    try {
+      const content=await read(number);
+      res.set("cache-control","no-store");
+      if(!content)res.status(404).json({ok:false,error:"not_found"});
+      else res.status(200).json({ok:true,sourceNumber:number,content});
+    } catch {
+      res.status(503).json({ok:false,error:"official_document_unavailable"});
     }
   };
 }

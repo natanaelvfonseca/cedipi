@@ -118,6 +118,7 @@ export function createCedipiClinicalAssistant({
     createBookingRequest,readOfficialDocument,
   },
   now=()=>new Date(),
+  modelConfigured=Boolean(process.env.OPENAI_API_KEY),
 }={}) {
   async function answer({phone,batch}) {
     const raw=batch.map(e=>e.body??e.text??"").join("\n").slice(-3000);
@@ -264,7 +265,10 @@ export function createCedipiClinicalAssistant({
     if (/\b(obrigad|valeu|agradec)\b/.test(message)) return reply(
       "Por nada! Estou à disposição para ajudar com os exames da CEDIPI."
     );
-    return reply(STAFF,"unknown_information");
+    // When an OpenAI key exists, pass non-critical free-form questions through
+    // the separately grounded Responses/RAG path. Otherwise fail to human.
+    // Deterministic booking/medical/payment rules above always take priority.
+    return modelConfigured ? null : reply(STAFF,"unknown_information");
   }
   return { answer };
 }

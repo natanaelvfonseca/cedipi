@@ -133,3 +133,19 @@ test("audio/photo proof routes to reception without pretending to verify",async(
  r=await ask("Comprovante do pix anexado");
  assert.equal(r.handoffReason,"document_review");
 });
+
+test("free-form nonclinical questions may use grounded OpenAI fallback only with a key",async()=>{
+ const {ask}=testAssistant();
+ const noKey=await ask("Vocês têm estacionamento coberto?");
+ assert.equal(noKey.handoffReason,"unknown_information");
+ const assistant=createCedipiClinicalAssistant({
+   modelConfigured:true,
+   repo:{
+     listOfficialExams:async()=>all,
+     readLaraSession:async(phone)=>({phone,state:"idle"}),
+   },
+ });
+ assert.equal(await assistant.answer({
+   phone:"5511999999999",batch:[{body:"Vocês têm estacionamento coberto?"}],
+ }),null);
+});
