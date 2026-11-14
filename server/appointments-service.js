@@ -4,10 +4,9 @@ import {
   reservePendingAppointment,
   AppointmentReservationError,
 } from "./appointments-repository.js";
-import {
-  createAppointment as createN8nAppointment,
-  N8nAgendaError,
-} from "./n8n-agenda-client.js";
+import { N8nAgendaError } from "./n8n-agenda-client.js";
+import { GoogleCalendarError } from "./google-calendar-scheduler.js";
+import { scheduleAppointment } from "./appointment-scheduler.js";
 
 const reservationErrors = {
   doctor_not_found: 404,
@@ -44,7 +43,7 @@ export function createAppointmentsService({
   reserve = reservePendingAppointment,
   confirm = confirmAppointment,
   fail = failAppointment,
-  schedule = createN8nAppointment,
+  schedule = scheduleAppointment,
 } = {}) {
   async function createAppointment(input) {
     let reservation;
@@ -74,6 +73,9 @@ export function createAppointmentsService({
     let external;
     try {
       external = await schedule({
+        appointmentId: pending.id,
+        calendarId: reservation.calendarId,
+        end: reservation.slot.endsAt,
         doctor: pending.doctor.name,
         doctorId: pending.doctor.id,
         slotId: reservation.slot.id,
@@ -83,9 +85,9 @@ export function createAppointmentsService({
         exam: pending.exam,
       });
     } catch (error) {
-      await fail(pending.id, error instanceof N8nAgendaError ? error.code : "n8n_unavailable");
-      if (error instanceof N8nAgendaError) throw error;
-      throw new AppointmentError("n8n_unavailable", 502);
+      await fail(pending.id, error instanceof N8nAgendaError || error instanceof GoogleCalendarError ? error.code : "scheduling_unavailable");
+      if (error instanceof N8nAgendaError || error instanceof GoogleCalendarError) throw error;
+      throw new AppointmentError("scheduling_unavailable", 502);
     }
 
     if (external.status !== "agendado") {

@@ -5,13 +5,14 @@ import {
   WhatsAppConversationError,
 } from "./whatsapp-conversations-service.js";
 import { N8nAiControlError } from "./n8n-ai-control-client.js";
+import { AiControlUnavailableError } from "./ai-conversation-control-client.js";
 import {
   normalizeBrazilianPhone,
   normalizeIndividualConversationId,
 } from "./whatsapp-phone.js";
 
 function respondWithError(error, response) {
-  const known = error instanceof WhatsAppConversationError || error instanceof N8nAiControlError;
+  const known = error instanceof WhatsAppConversationError || error instanceof N8nAiControlError || error instanceof AiControlUnavailableError;
   const status = known ? error.status : 502;
   const code = known ? error.code : "whatsapp_inbox_unavailable";
   console.error("Falha na integração da inbox do WhatsApp:", {

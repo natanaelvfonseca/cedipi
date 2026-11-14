@@ -1,5 +1,6 @@
 import { createEvolutionClient, EvolutionApiError } from "./evolution-client.js";
-import { createN8nAiControlClient, N8nAiControlError } from "./n8n-ai-control-client.js";
+import { createAiConversationControlClient, AiControlUnavailableError } from "./ai-conversation-control-client.js";
+import { N8nAiControlError } from "./n8n-ai-control-client.js";
 import { normalizeIndividualConversationId } from "./whatsapp-phone.js";
 
 export class WhatsAppConversationError extends Error {
@@ -110,7 +111,7 @@ export function normalizeConversation(chat) {
 }
 
 function mapExternalError(error) {
-  if (error instanceof WhatsAppConversationError || error instanceof N8nAiControlError) return error;
+  if (error instanceof WhatsAppConversationError || error instanceof N8nAiControlError || error instanceof AiControlUnavailableError) return error;
   if (error instanceof EvolutionApiError) return new WhatsAppConversationError("evolution_unavailable", 502);
   return new WhatsAppConversationError("whatsapp_inbox_unavailable", 502);
 }
@@ -225,7 +226,7 @@ export function createWhatsAppConversationsService({
   now = () => new Date(),
 } = {}) {
   const evolutionClient = () => evolution ?? createEvolutionClient();
-  const aiControlClient = () => aiControl ?? createN8nAiControlClient();
+  const aiControlClient = () => aiControl ?? createAiConversationControlClient();
 
   return {
     async listConversations() {
@@ -303,7 +304,7 @@ export function createWhatsAppConversationsService({
     async sendManualMessage({ remoteJid, phone, text }) {
       try {
         const enabled = await aiControlClient().setEnabled(phone, false);
-        if (enabled !== false) throw new N8nAiControlError("ai_control_pause_not_confirmed");
+        if (enabled !== false) throw new AiControlUnavailableError("ai_control_pause_not_confirmed");
         const sent = normalizeMessage(await evolutionClient().sendText(phone, text));
         return { ...sent, fromMe: true, type: "text", text };
       } catch (error) {
