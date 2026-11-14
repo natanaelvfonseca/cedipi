@@ -75,3 +75,37 @@ docker run --rm --env-file .env -p 3000:3000 cedipi-agenda
 ```
 
 No EasyPanel, configure `DATABASE_URL`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME`, `EVOLUTION_INSTANCE_ID` e `N8N_INTERNAL_API_SECRET`, e exponha a porta `3000` da aplicação. Use o hostname interno do serviço PostgreSQL. `POSTGRES_ADMIN_URL` só é necessária durante o bootstrap e pode ser removida do serviço após a criação do banco.
+
+## Preparacao da Lara sem n8n
+
+A migration 007 cria controle por contato no PostgreSQL. O backend continua usando
+o n8n por padrao (CEDIPI_AI_CONTROL_BACKEND=n8n), pois a Lara antiga ainda
+responde pelo workflow. Nao troque para database enquanto o webhook n8n
+estiver ativo: a pausa no banco nao sera respeitada pelo workflow antigo.
+Apos migrar o receptor Evolution e o worker, defina o backend como database
+e invoque canLaraReply(phone) antes de cada envio. Falhas no banco bloqueiam
+o envio. Execute npm run db:migrate antes da virada.
+
+## Agenda sem n8n (preparacao)
+
+Por padrao CEDIPI_APPOINTMENTS_BACKEND=n8n. A alternativa google usa uma
+conta Google da clinica com OAuth refresh token que tenha leitura de FreeBusy e
+permissao de criar eventos nos calendarios dos medicos. Configure:
+CEDIPI_GOOGLE_CLIENT_ID, CEDIPI_GOOGLE_CLIENT_SECRET, CEDIPI_GOOGLE_REFRESH_TOKEN.
+O scheduler nativo consulta eventos existentes e FreeBusy antes de inserir um
+evento com ID deterministico baseado no agendamento, reduzindo duplicidade.
+A ausencia de autorizacao ou duvida sobre disponibilidade bloqueia o agendamento.
+
+Nao habilite google sem reconciliar eventos preexistentes, testar OAuth e
+realizar testes em uma agenda de homologacao. O Google Calendar nao oferece
+reserva atomica de horario para escritas feitas por outros clientes;
+sincronizacao de eventos externos e reconciliacao apos falhas de confirmacao
+do PostgreSQL ainda sao pre-requisitos para producao.
+
+## Lara nativa (etapa 2, opcional e desativada)
+
+O codigo do webhook Evolution, worker, busca de fontes e tela Lara IA ja existe.
+Por seguranca, o modo nativo de envio NAO inicia automaticamente. Consulte
+[docs/migracao-sem-n8n.md](docs/migracao-sem-n8n.md) para migracoes, variaveis,
+teste de webhook, seguranca e validacao do cutover. Rode npm run worker:lara
+como processo separado apos configurar a homologacao.

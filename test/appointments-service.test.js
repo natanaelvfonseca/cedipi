@@ -30,6 +30,7 @@ function createdReservation() {
   return {
     outcome: "created",
     appointment: pending,
+    calendarId: "calendar@group.calendar.google.com",
     slot: {
       id: request.slotId,
       startsAt: pending.startsAt,
@@ -57,6 +58,9 @@ test("cria pending antes do n8n, confirma e persiste identificadores Google", as
     schedule: async (payload) => {
       assert.equal(pendingCreated, true);
       assert.deepEqual(payload, {
+        appointmentId: pending.id,
+        calendarId: "calendar@group.calendar.google.com",
+        end: pending.endsAt,
         doctor: "Danilo",
         doctorId: request.doctorId,
         slotId: request.slotId,

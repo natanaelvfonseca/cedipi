@@ -39,7 +39,7 @@ export async function reservePendingAppointment({
     await client.query("BEGIN;");
 
     const doctorResult = await client.query(
-      "SELECT id, name, active FROM doctors WHERE id = $1;",
+      "SELECT id, name, active, google_calendar_id FROM doctors WHERE id = $1;",
       [doctorId],
     );
     const doctor = doctorResult.rows[0];
@@ -191,6 +191,7 @@ export async function reservePendingAppointment({
         patient_name: savedPatient.name,
         patient_phone: savedPatient.phone,
       }),
+      calendarId: doctor.google_calendar_id,
       slot: {
         id: slot.id,
         startsAt: slot.starts_at.toISOString(),
@@ -245,7 +246,7 @@ export async function failAppointment(appointmentId, reason, pool = getDatabaseP
         status = 'failed',
         notes = CASE
           WHEN $2::text IS NULL THEN notes
-          ELSE concat_ws(E'\n', notes, 'n8n: ' || $2::text)
+          ELSE concat_ws(E'\n', notes, 'scheduler: ' || $2::text)
         END,
         updated_at = NOW()
       WHERE id = $1 AND status = 'pending';

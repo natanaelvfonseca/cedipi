@@ -1,0 +1,73 @@
+name: CEDIPI validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/cedipi-native-ai-control]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Unit and HTTP tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Bootstrap isolated database
+        run: npm run db:bootstrap
+        env:
+          POSTGRES_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      - name: Run all migrations on isolated PostgreSQL
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+      - name: Check idempotence of migrations
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+      - name: Lara queue and knowledge PostgreSQL integration test
+        run: node --test test/lara-postgres.test.js
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+      - name: Prepare isolated Docker homologation configuration
+        run: |
+          printf '%s\n' \
+            'CEDIPI_TEST_DB_PASSWORD=ci-local-database-only' \
+            'LARA_WEBHOOK_SECRET=abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop' \
+            'EVOLUTION_API_KEY=ci-fake-only' \
+            'CEDIPI_INITIAL_ADMIN_NAME=Homologacao' \
+            'CEDIPI_INITIAL_ADMIN_EMAIL=homolog@cedipi.invalid' \
+            'CEDIPI_INITIAL_ADMIN_PASSWORD=ci-fake-temporary-password' \
+            > homologation/.env.homolog
+          chmod 600 homologation/.env.homolog
+      - name: Start isolated app, worker, DB and fake external APIs
+        run: docker compose --env-file homologation/.env.homolog -f homologation/docker-compose.yml up -d --build
+      - name: Full webhook to worker to mock WhatsApp smoke test
+        run: docker compose --env-file homologation/.env.homolog -f homologation/docker-compose.yml exec -T api node scripts/homologation/smoke.mjs
+      - name: Remove isolated homologation containers and data
+        if: always()
+        run: |
+          if [ -f homologation/.env.homolog ]; then
+            docker compose --env-file homologation/.env.homolog -f homologation/docker-compose.yml ps
+            docker compose --env-file homologation/.env.homolog -f homologation/docker-compose.yml down -v --remove-orphans
+          fi

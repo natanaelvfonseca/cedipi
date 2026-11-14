@@ -1,5 +1,6 @@
 import { appointmentsService, AppointmentError } from "./appointments-service.js";
 import { N8nAgendaError } from "./n8n-agenda-client.js";
+import { GoogleCalendarError } from "./google-calendar-scheduler.js";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,7 +51,7 @@ export function createPostAppointmentHandler(service = appointmentsService) {
         appointment: result.appointment,
       });
     } catch (error) {
-      const knownError = error instanceof AppointmentError || error instanceof N8nAgendaError;
+      const knownError = error instanceof AppointmentError || error instanceof N8nAgendaError || error instanceof GoogleCalendarError;
       const status = knownError ? error.status : 500;
       const code = knownError ? error.code : "internal_error";
       console.error("Falha ao criar agendamento:", { code });

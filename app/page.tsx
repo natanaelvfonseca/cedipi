@@ -33,10 +33,11 @@ import { WhatsAppSidebarStatus } from "./whatsapp-sidebar-status";
 import { AccountMenu } from "./account-menu";
 import { useAuth } from "./auth-context";
 import { UsersScreen } from "./users";
+import { LaraManagement } from "./lara-management";
 
 type ViewMode = "day" | "week";
-type AppView = "agenda" | "conversations" | "patients" | "doctors" | "users" | "settings";
-type ComingSoonView = Exclude<AppView, "agenda" | "conversations" | "users">;
+type AppView = "agenda" | "conversations" | "patients" | "doctors" | "users" | "lara" | "settings";
+type ComingSoonView = Exclude<AppView, "agenda" | "conversations" | "users" | "lara">;
 
 const navItems = [
   { id: "agenda" as const, label: "Agenda", icon: CalendarDays },
@@ -44,6 +45,7 @@ const navItems = [
   { id: "patients" as const, label: "Pacientes", icon: UsersRound },
   { id: "doctors" as const, label: "Médicos", icon: Stethoscope },
   { id: "users" as const, label: "Usuários", icon: UsersRound, adminOnly: true },
+  { id: "lara" as const, label: "Lara IA", icon: Sparkles, adminOnly: true },
   { id: "settings" as const, label: "Configurações", icon: Settings },
 ];
 
@@ -420,6 +422,8 @@ export default function Home() {
           <Conversations notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
         ) : activeView === "users" ? (
           <UsersScreen notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
+        ) : activeView === "lara" ? (
+          <LaraManagement notify={showToast} openMobileMenu={() => setMobileNavOpen(true)} />
         ) : activeView === "agenda" ? <>
         <header className="topbar">
           <div className="title-wrap">
