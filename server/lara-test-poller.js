@@ -31,10 +31,19 @@ export function createLaraTestPoller({
     if (!Array.isArray(records)) {
       throw new Error("Lara test mode: Evolution records unavailable");
     }
+    // Evolution may save outgoing replies in the E.164 chat, while incoming
+    // texts appear in the LID chat. Check both before answering.
+    const phoneJid = phone + "@s.whatsapp.net";
+    const outboundPayload = remoteJid === phoneJid
+      ? payload : await client.findMessages(phoneJid, { page: 1, offset: 30 });
+    const outboundRecords = outboundPayload?.messages?.records;
+    if (!Array.isArray(outboundRecords)) {
+      throw new Error("Lara test mode: outbound history unavailable");
+    }
     let accepted = 0, duplicates = 0;
     // Do not add a bot reply when a human or the legacy workflow has
-    // already answered the inbound message, even if it is still in history.
-    const latestOutbound = records.reduce((max, record) => (
+    // already answered the inbound message in either WhatsApp addressing mode.
+    const latestOutbound = [...records, ...outboundRecords].reduce((max, record) => (
       record?.key?.fromMe === true
         ? Math.max(max, Number(record.messageTimestamp) || 0) : max
     ), 0);
