@@ -14,8 +14,15 @@ export function normalizeEvolutionMessage(payload, expectedInstance = "Cedipi") 
   const rawId = key.id;
   if (key.fromMe !== false || typeof rawId !== "string" || !rawId ||
     rawId.length > MAX_MESSAGE_ID_LENGTH) return null;
-  const identity = normalizeIndividualConversationId(key.remoteJid ?? data.remoteJid ?? "");
-  if (!identity) return null; // No groups, broadcast or unsupported LID.
+  const primaryJid = key.remoteJid ?? data.remoteJid ?? "";
+  // Evolution sends modern 1:1 chats as @lid. Use its verified
+  // remoteJidAlt (the E.164 counterpart), never guess a phone from a LID.
+  if (/@g\.us$|@broadcast$/i.test(primaryJid)) return null;
+  const identity = normalizeIndividualConversationId(primaryJid)
+    ?? (/@lid$/i.test(primaryJid)
+      ? normalizeIndividualConversationId(key.remoteJidAlt ?? data.remoteJidAlt ?? "")
+      : null);
+  if (!identity) return null; // Reject unresolvable LIDs and non-individuals.
   const message = data.message?.ephemeralMessage?.message ?? data.message ?? {};
   const content = message.conversation ?? message.extendedTextMessage?.text ?? null;
   if (typeof content !== "string") return null;

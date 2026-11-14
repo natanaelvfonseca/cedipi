@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import { closeDatabasePool } from "./database.js";
 import { createAuthService } from "./auth-service.js";
+import { startLaraTestMode } from "./lara-test-mode.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const authService = createAuthService();
@@ -14,11 +15,23 @@ try {
 }
 const app = createApp({ authService });
 
+let stopTestMode = () => {};
+if (process.env.LARA_TEST_MODE === "true") {
+  try {
+    stopTestMode = startLaraTestMode();
+  } catch {
+    console.error("Modo de teste Lara inválido; encerrando para não afetar pacientes.");
+    await closeDatabasePool();
+    process.exit(1);
+  }
+}
+
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`Servidor CEDIPI disponível na porta ${port}.`);
 });
 
 async function shutdown(signal) {
+  stopTestMode();
   console.log(`${signal} recebido; encerrando o servidor.`);
   server.close(async () => {
     try {
