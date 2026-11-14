@@ -54,7 +54,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    networks: [isolated]
+    networks: [isolated, hostloop]
     restart: unless-stopped
   worker:
     image: cedipi-homolog/app:local
@@ -84,3 +84,6 @@ volumes:
 networks:
   isolated:
     internal: true
+  # Only the web API may join this additional bridge, for a loopback-bound
+  # SSH-tunnel preview. DB, worker and mock stay on the internal network.
+  hostloop: {}
