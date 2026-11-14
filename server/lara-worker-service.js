@@ -1,6 +1,7 @@
 import { createEvolutionClient } from "./evolution-client.js";
 import { canLaraReply, setConversationAiEnabled } from "./ai-conversation-control-repository.js";
 import { createLaraModel, composeLaraReply } from "./lara-response.js";
+import { createCedipiClinicalAssistant } from "./cedipi-clinical-assistant.js";
 import * as repository from "./lara-inbox-repository.js";
 
 function publicStatus(status) {
@@ -20,6 +21,7 @@ export function createLaraWorker({
   canReply = canLaraReply,
   setEnabled = setConversationAiEnabled,
   model = createLaraModel(),
+  clinicalAssistant = createCedipiClinicalAssistant(),
   evolutionFactory = createEvolutionClient,
 } = {}) {
   async function runOnce() {
@@ -54,13 +56,22 @@ export function createLaraWorker({
         return publicStatus("paused");
       }
 
-      const text = batch.map((item) => item.body).join("\n").slice(-3000);
-      const history = await repo.latestLaraHistory(job.phone);
-      const sources = await repo.relevantLaraKnowledge(text);
-      const reply = await composeLaraReply({
-        batch, history, sources, model,
-        handoff: async (reason) => repo.createLaraHandoff(job.phone, reason),
-      });
+      const clinical = await clinicalAssistant.answer({ phone: job.phone, batch });
+      let reply;
+      if (clinical) {
+        reply = clinical;
+        if (clinical.handoffReason) {
+          await repo.createLaraHandoff(job.phone, clinical.handoffReason);
+        }
+      } else {
+        const text = batch.map((item) => item.body).join("\n").slice(-3000);
+        const history = await repo.latestLaraHistory(job.phone);
+        const sources = await repo.relevantLaraKnowledge(text);
+        reply = await composeLaraReply({
+          batch, history, sources, model,
+          handoff: async (reason) => repo.createLaraHandoff(job.phone, reason),
+        });
+      }
 
       // Avoid stale responses when a new text arrives mid-generation.
       const newer = await repo.hasNewerPendingMessages(job);

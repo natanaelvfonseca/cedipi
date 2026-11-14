@@ -4,6 +4,12 @@ import express from "express";
 import { createDatabaseHealthHandler } from "./database-health.js";
 import { createLaraWebhookHandler } from "./lara-webhook.js";
 import {
+  createListOfficialCatalogHandler,
+  createListBookingRequestsHandler,
+  createLaraReadinessHandler,
+  createReadOfficialDocumentHandler,
+} from "./cedipi-clinic-handlers.js";
+import {
   createListLaraKnowledgeHandler,
   createAddLaraKnowledgeHandler,
   createListLaraHandoffsHandler,
@@ -95,6 +101,11 @@ export function createApp({
   app.post("/api/users", requireAdmin, users.create);
   app.patch("/api/users/:userId", requireAdmin, users.update);
   app.post("/api/users/:userId/reset-password", requireAdmin, users.resetPassword);
+  app.get("/api/lara/readiness", requireAdmin, createLaraReadinessHandler());
+  app.get("/api/lara/catalog", requireAdmin, createListOfficialCatalogHandler());
+  app.get("/api/lara/booking-requests", requireAdmin, createListBookingRequestsHandler());
+  app.get("/api/lara/official-documents/:number", requireAdmin,
+    createReadOfficialDocumentHandler());
   app.get("/api/lara/knowledge", requireAdmin, createListLaraKnowledgeHandler());
   app.post("/api/lara/knowledge", requireAdmin, createAddLaraKnowledgeHandler());
   app.get("/api/lara/handoffs", requireAdmin, createListLaraHandoffsHandler());

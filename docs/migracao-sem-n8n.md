@@ -201,3 +201,71 @@ A execucao de testes do CI cria e elimina os containers, sem retencao de dados.
   agenda e do roteamento de webhooks.
 - Para encerrar instantaneamente, alterar LARA_TEST_MODE=false e
   atualizar o servico; conservar o registro do teste para auditoria.
+
+## Clinica CEDIPI: seis documentos oficiais e triagem clinica
+
+A fonte **privada e verificada por SHA-256** e composta pelos arquivos
+01 Agenda Médicos, 02 Biópsias/PAAF/Core, 03 Ultrassons, 04 Preparos
+Especiais, 05 Pagamentos/PIX e 06 Mensagens de Confirmação. O importador
+scripts/import-official-catalog.js exige exatamente 6 documentos e
+47 exames. Um arquivo JSON privado gerado dos DOCX originais deve ser
+montado no container (por exemplo, /run/secrets/official.json). **Nunca
+versionar os DOCX, os dados completos do Pix, o arquivo JSON ou credenciais
+no GitHub: o repositorio CEDIPI e publico.**
+
+A migração 009 cria o catalogo com 39 ultrassons e 8 PAAFs/Core-Biopsies,
+fontes integrais apenas no banco, solicitacoes e estado da conversa.
+O importador e idempotente e conserva informacoes oficiais existentes fora
+das fontes por ele gerenciadas.
+
+A Lara nativa obedece obrigatoriamente a estas etapas:
+1. Identificar procedimento sem inventar sinonimos, duracao ou medico.
+2. Informar preco, duracao, medicos e preparo **somente** do catalogo;
+   quando houver medicacao, anticoagulantes, endometriose ou descricao
+   incompleta, encaminhar a recepcao.
+3. Identificar data desejada; consultar escala semanal, bloqueios, pedidos
+   existentes e agendamentos locais, considerando a duracao integral.
+4. Mostrar horarios **preliminares e sujeitos a confirmacao**, nunca uma
+   disponibilidade final do Google sem autorizacao OAuth da clinica.
+5. Permitir opcao, nome/sobrenome e consentimento explicito para criar
+   pedido com status needs_verification ou awaiting_medical_approval.
+6. Marcar o pedido como encaminhado e pausar a IA nesse contato, de modo
+   que um atendente verifique agenda externa, aprovacao, comprovante,
+   adiantamento, remarcacao/cancelamento e confirmacao final.
+7. Taxa de 20% para exames com preco igual ou maior a R$ 400; taxa
+   abatida do valor final. A chave PIX so pode ser fornecida no momento
+   correto da confirmacao de um horario JA verificado. Comprovante nao
+   equivale a pagamento validado.
+8. Para descricao sem fonte ou situacao de emergencia, pedir recepcao/
+   atendimento de urgencia, sem orientacao medica nem diagnostico.
+9. Fotos, documentos e audios nao sao interpretados como comprovante
+   validado; vao para conferência humana.
+
+As escalas dos Drs. Danilo, Wagner e Deison ja constam na migration 006.
+A duracao do Core-Biopsy de partes moles nao consta no material oficial
+e NAO deve ser inferida. O documento 04 tem medicamentos e enemas,
+exigindo revisao profissional antes de qualquer instrucao personalizada.
+
+## Dependencias para uma ativacao 100% autonoma
+
+1. OPENAI_API_KEY valida da conta API (gpt-5.4-mini testado em Responses,
+   configurado com store:false, sem tools de escrita). A chave nao foi
+   fornecida; a regra deterministica trabalha sem ela.
+2. CEDIPI_GOOGLE_CLIENT_ID, CEDIPI_GOOGLE_CLIENT_SECRET,
+   CEDIPI_GOOGLE_REFRESH_TOKEN, autorizados para as tres agendas da
+   CEDIPI, escopos adequados de consulta a disponibilidade e eventos.
+   Os IDs de calendario existem, mas token OAuth **nao** esta configurado.
+3. Validacao real de freeBusy, escrita, cancelamento/remarcacao,
+   pagamentos, comprovantes e processos de aprovacao medica. Enquanto
+   isso NAO se afirma que um agendamento ficou confirmado.
+4. Homologacao de producao com o numero autorizado e revisao LGPD
+   pela equipe clinica, antes do corte global da Evolution/n8n.
+
+Os endpoints administrativos autenticados:
+GET /api/lara/catalog, GET /api/lara/booking-requests,
+GET /api/lara/readiness, GET /api/lara/official-documents/1..6.
+Nenhum deles deve ser disponibilizado sem verificacao da sessao admin.
+
+Em modo de teste, manter o webhook global apontado para n8n,
+LARA_TEST_MODE=true apenas para um contato, e LARA_INGEST_ENABLED=false,
+LARA_OUTBOUND_ENABLED=false e LARA_CUTOVER_CONFIRMED=false.
