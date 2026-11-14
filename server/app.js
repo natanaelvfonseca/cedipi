@@ -2,6 +2,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { createDatabaseHealthHandler } from "./database-health.js";
+import { createLaraWebhookHandler } from "./lara-webhook.js";
+import {
+  createListLaraKnowledgeHandler,
+  createAddLaraKnowledgeHandler,
+  createListLaraHandoffsHandler,
+  createPatchLaraKnowledgeHandler,
+  createCloseLaraHandoffHandler,
+} from "./lara-admin-handlers.js";
 import {
   createConnectWhatsAppHandler,
   createDisconnectWhatsAppHandler,
@@ -60,6 +68,7 @@ export function createApp({
 
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  app.post("/api/webhooks/evolution/lara", express.json({ limit: "32kb" }), createLaraWebhookHandler());
   app.use(express.json({ limit: "32kb" }));
   app.use("/api", verifySameOrigin);
   app.get("/api/health/database", createDatabaseHealthHandler());
@@ -86,6 +95,11 @@ export function createApp({
   app.post("/api/users", requireAdmin, users.create);
   app.patch("/api/users/:userId", requireAdmin, users.update);
   app.post("/api/users/:userId/reset-password", requireAdmin, users.resetPassword);
+  app.get("/api/lara/knowledge", requireAdmin, createListLaraKnowledgeHandler());
+  app.post("/api/lara/knowledge", requireAdmin, createAddLaraKnowledgeHandler());
+  app.get("/api/lara/handoffs", requireAdmin, createListLaraHandoffsHandler());
+  app.patch("/api/lara/knowledge/:sourceId", requireAdmin, createPatchLaraKnowledgeHandler());
+  app.post("/api/lara/handoffs/:id/close", requireAdmin, createCloseLaraHandoffHandler());
   app.get("/api/whatsapp/instance", createGetWhatsAppInstanceHandler());
   app.post("/api/whatsapp/instance/connect", createConnectWhatsAppHandler());
   app.post("/api/whatsapp/instance/disconnect", createDisconnectWhatsAppHandler());

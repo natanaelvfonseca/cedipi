@@ -101,3 +101,11 @@ realizar testes em uma agenda de homologacao. O Google Calendar nao oferece
 reserva atomica de horario para escritas feitas por outros clientes;
 sincronizacao de eventos externos e reconciliacao apos falhas de confirmacao
 do PostgreSQL ainda sao pre-requisitos para producao.
+
+## Lara nativa (etapa 2, opcional e desativada)
+
+O codigo do webhook Evolution, worker, busca de fontes e tela Lara IA ja existe.
+Por seguranca, o modo nativo de envio NAO inicia automaticamente. Consulte
+[docs/migracao-sem-n8n.md](docs/migracao-sem-n8n.md) para migracoes, variaveis,
+teste de webhook, seguranca e validacao do cutover. Rode npm run worker:lara
+como processo separado apos configurar a homologacao.

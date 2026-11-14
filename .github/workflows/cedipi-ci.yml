@@ -45,3 +45,7 @@ jobs:
         run: npm run db:migrate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+      - name: Lara queue and knowledge PostgreSQL integration test
+        run: node --test test/lara-postgres.test.js
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core

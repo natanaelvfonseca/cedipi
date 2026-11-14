@@ -11,7 +11,8 @@
     "preview": "vite preview --host 0.0.0.0",
     "db:bootstrap": "node --env-file-if-exists=.env scripts/bootstrap-database.js",
     "db:migrate": "node --env-file-if-exists=.env scripts/run-migrations.js",
-    "test": "node --test"
+    "test": "node --test",
+    "worker:lara": "node --env-file-if-exists=.env server/lara-worker-entrypoint.js"
   },
   "dependencies": {
     "express": "^5.2.1",
