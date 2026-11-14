@@ -15,6 +15,7 @@ export function createLaraWorker({
   enabled = process.env.LARA_OUTBOUND_ENABLED === "true",
   cutoverConfirmed = process.env.LARA_CUTOVER_CONFIRMED === "true",
   controlBackend = process.env.CEDIPI_AI_CONTROL_BACKEND ?? "n8n",
+  allowedPhone = process.env.LARA_TEST_MODE === "true" ? process.env.LARA_TEST_PHONE : null,
   repo = repository,
   canReply = canLaraReply,
   setEnabled = setConversationAiEnabled,
@@ -38,6 +39,13 @@ export function createLaraWorker({
       if (!batch.length) {
         await release();
         return publicStatus("empty");
+      }
+
+      // An opt-in test may NEVER send to a different patient.
+      if (allowedPhone && job.phone !== allowedPhone) {
+        await repo.markLaraSuppressed(job, "test_allowlist");
+        await release();
+        return publicStatus("not_allowlisted");
       }
 
       if (!await canReply(job.phone)) {

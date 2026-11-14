@@ -9,6 +9,9 @@ export class LaraModelError extends Error {
 
 export function identifyLaraIntent(text) {
   const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/^(?:(?:oi+|ola|bom dia|boa tarde|boa noite)[,!?.\s]*){1,8}$/.test(normalized.trim())) {
+    return "greeting";
+  }
   if (/\b(dor no peito|falta de ar|desmaio|emergencia|socorro imediato)\b/.test(normalized)) {
     return "urgent";
   }
@@ -106,6 +109,9 @@ export async function composeLaraReply({
 }) {
   const text = batch.map((item) => item.body).join("\n").slice(-3000);
   const intent = identifyLaraIntent(text);
+  if (intent === "greeting") {
+    return { text: "Olá! Sou a Lara, assistente virtual da CEDIPI. 😊 Qual exame você gostaria de agendar?", handoffReason: null };
+  }
   if (intent === "urgent") {
     await handoff("urgent");
     return { text: URGENT, handoffReason: "urgent" };

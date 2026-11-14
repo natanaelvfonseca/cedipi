@@ -176,3 +176,28 @@ nao identificarem o ambiente isolado explicitamente.
 NUNCA usar chaves ou numeros de pacientes reais na homologacao com mocks.
 O ambiente ainda NAO prova conectividade real de OpenAI/Evolution da clinica.
 A execucao de testes do CI cria e elimina os containers, sem retencao de dados.
+
+## Modo seguro de teste WhatsApp em producao (LID / Evolution)
+
+- LARA_TEST_MODE=true ativa a verificacao periodica **somente** da
+  conversa conhecida em LARA_TEST_REMOTE_JID, associada ao numero
+  autorizado LARA_TEST_PHONE e apenas a mensagens com timestamp
+  >= LARA_TEST_MIN_TIMESTAMP (Unix em segundos).
+- A conexao Evolution permanece com o webhook antigo do n8n, sem
+  trocar o webhook global e sem enviar mensagens a outros pacientes.
+- O modo de teste falha no inicio se faltar identificador, numero,
+  instante de inicio ou instancia correta. O worker tem **allowlist**
+  adicional, checa pausa global/individual e nao tenta reenviar
+  mensagens com status incerto.
+- Se uma resposta humana ou do n8n for mais recente que a mensagem
+  recebida, o teste ignora o recebimento para nao duplicar respostas.
+- Uma saudacao simples tem resposta deterministica e acolhedora sem
+  necessitar da API OpenAI. Perguntas clinicas, agendamentos ou outros
+  assuntos sem conhecimento homologado seguem para a recepcao e pausam
+  o bot naquele contato. Nenhum agendamento autonomo e confirmado.
+- LARA_INGEST_ENABLED, LARA_OUTBOUND_ENABLED e
+  LARA_CUTOVER_CONFIRMED continuam false neste modo; a ativacao
+  completa e um processo distinto que exige validacao da OpenAI, RAG,
+  agenda e do roteamento de webhooks.
+- Para encerrar instantaneamente, alterar LARA_TEST_MODE=false e
+  atualizar o servico; conservar o registro do teste para auditoria.

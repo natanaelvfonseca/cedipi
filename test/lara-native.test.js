@@ -384,3 +384,40 @@ test("uncertain WhatsApp delivery pauses Lara for that contact", async () => {
   assert.equal((await worker.runOnce()).status, "manual_review");
   assert.ok(calls.some((item) => item[0] === "pause" && item[1] === phone && item[2] === false));
 });
+
+test("Evolution @lid inbound resolves only via a valid remoteJidAlt", () => {
+  const data = { ...payload.data, key: {
+    id: "LID-1", fromMe: false, remoteJid: "123456789012345@lid",
+    remoteJidAlt: phone + "@s.whatsapp.net",
+  }};
+  assert.deepEqual(normalizeEvolutionMessage({ ...payload, data }), {
+    ...event, messageId: "LID-1",
+  });
+  assert.equal(normalizeEvolutionMessage({
+    ...payload, data: { ...data, key: { ...data.key, remoteJidAlt: undefined } },
+  }), null);
+  assert.equal(normalizeEvolutionMessage({
+    ...payload, data: { ...data, key: { ...data.key, remoteJid: "12345@g.us" } },
+  }), null);
+});
+
+test("greetings receive one question without OpenAI or knowledge or human handoff", async () => {
+  assert.equal(identifyLaraIntent("Oi"), "greeting");
+  assert.equal(identifyLaraIntent("Olá, bom dia!"), "greeting");
+  let called = 0;
+  const result = await composeLaraReply({
+    batch: [{ body: "Oi" }, { body: "Oi" }],
+    sources: [],
+    model: { answer: () => { called++; throw new Error("should not call"); } },
+    handoff: () => { called++; throw new Error("should not hand off"); },
+  });
+  assert.equal(result.handoffReason, null);
+  assert.match(result.text,/Lara/);
+  assert.equal(called,0);
+});
+
+test("a Lara test worker never responds to nonallowlisted phones", async () => {
+  const { worker, calls } = fakeWorker({ worker: { allowedPhone: "5511888888888" } });
+  assert.equal((await worker.runOnce()).status, "not_allowlisted");
+  assert.ok(!calls.some((call) => call[0] === "send"));
+});
