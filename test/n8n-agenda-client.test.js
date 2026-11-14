@@ -81,11 +81,18 @@ test("trata timeout sem revelar configuração", async () => {
     timeoutMs: 5,
   });
 
-  await assert.rejects(client.checkAvailability(input), (error) => {
-    assert.equal(error.code, "n8n_timeout");
-    assert.equal(JSON.stringify(error).includes("private-secret"), false);
-    return true;
-  });
+  // Node 22 uses an unref'ed timer for AbortSignal.timeout().
+  // Keep the test event loop alive until the abort signal resolves.
+  const keepAlive = setTimeout(() => {}, 1000);
+  try {
+    await assert.rejects(client.checkAvailability(input), (error) => {
+      assert.equal(error.code, "n8n_timeout");
+      assert.equal(JSON.stringify(error).includes("private-secret"), false);
+      return true;
+    });
+  } finally {
+    clearTimeout(keepAlive);
+  }
 });
 
 test("trata erro de rede como indisponibilidade", async () => {
