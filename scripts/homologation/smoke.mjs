@@ -54,8 +54,15 @@ async function until(fn, { attempts = 95, pauseMs = 400 } = {}) {
   throw new Error("HOMOLOG_TIMEOUT");
 }
 try {
-  const health=await fetch("http://127.0.0.1:3000/api/health/database");
-  assert.equal(health.status,200);
+  // Docker Compose reports a started container before the API begins listening.
+  const health=await until(async () => {
+    try {
+      const res=await fetch("http://127.0.0.1:3000/api/health/database");
+      return res.status===200 ? res : null;
+    } catch {
+      return null;
+    }
+  }, { attempts: 80, pauseMs: 250 });
   assert.equal((await health.json()).database,"connected");
   console.log("PASS health");
 
