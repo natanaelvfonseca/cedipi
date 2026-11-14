@@ -18,7 +18,7 @@ test("test poller handles real Evolution LID chats and never enqueues any other 
   const m=createLaraTestPoller({
     phone, remoteJid:lid, minTimestamp,
     client:{ findMessages: async (jid,opts)=>{
-      assert.equal(jid,lid);
+      assert.ok(jid === lid || jid === phone + "@s.whatsapp.net");
       assert.deepEqual(opts,{page:1,offset:30});
       return {messages:{records:[
         record("today", minTimestamp+3, false),
@@ -57,4 +57,17 @@ test("poller does not answer an inbound text already answered by n8n or human",a
   const result=await poller.pollOnce();
   assert.deepEqual(enqueued,["unanswered"]);
   assert.equal(result.accepted,1);
+});
+
+test("outgoing reply stored under E.164 prevents duplicate response to LID chat",async()=>{
+  const enqueued=[];
+  const poller=createLaraTestPoller({
+    phone,remoteJid:lid,minTimestamp,
+    client:{findMessages:async jid=>({messages:{records:jid===lid
+      ? [record("inbound",minTimestamp+2,false)]
+      : [record("human-answer",minTimestamp+3,true)]}})},
+    enqueue:async e=>{enqueued.push(e.messageId);return {duplicate:false};},
+  });
+  assert.deepEqual(await poller.pollOnce(),{accepted:0,duplicates:0});
+  assert.deepEqual(enqueued,[]);
 });
