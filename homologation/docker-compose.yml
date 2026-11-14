@@ -1,0 +1,86 @@
+name: cedipi-homolog
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: cedipi_test
+      POSTGRES_PASSWORD: ${CEDIPI_TEST_DB_PASSWORD:?}
+      POSTGRES_DB: cedipi_core
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [isolated]
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U cedipi_test -d cedipi_core"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: cedipi-homolog/app:local
+    command: ["node","scripts/run-migrations.js"]
+    environment:
+      DATABASE_URL: postgresql://cedipi_test:${CEDIPI_TEST_DB_PASSWORD}@db:5432/cedipi_core
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [isolated]
+    restart: "no"
+  mock:
+    image: cedipi-homolog/app:local
+    command: ["node","scripts/homologation/mock-external.mjs"]
+    networks: [isolated]
+    restart: unless-stopped
+  api:
+    image: cedipi-homolog/app:local
+    command: ["node","server/index.js"]
+    ports:
+      - "127.0.0.1:18083:3000"
+    env_file: .env.homolog
+    environment:
+      DATABASE_URL: postgresql://cedipi_test:${CEDIPI_TEST_DB_PASSWORD}@db:5432/cedipi_core
+      NODE_ENV: homologation
+      EVOLUTION_API_URL: http://mock:4000/evolution
+      EVOLUTION_INSTANCE_NAME: Cedipi
+      OPENAI_API_KEY: dummy-staging-only-do-not-use
+      LARA_OPENAI_MODEL: homologation-mock
+      LARA_OPENAI_ENDPOINT: http://mock:4000/openai/v1/responses
+      CEDIPI_AI_CONTROL_BACKEND: database
+      LARA_INGEST_ENABLED: "true"
+      LARA_OUTBOUND_ENABLED: "false"
+      LARA_CUTOVER_CONFIRMED: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [isolated]
+    restart: unless-stopped
+  worker:
+    image: cedipi-homolog/app:local
+    command: ["node","server/lara-worker-entrypoint.js"]
+    env_file: .env.homolog
+    environment:
+      DATABASE_URL: postgresql://cedipi_test:${CEDIPI_TEST_DB_PASSWORD}@db:5432/cedipi_core
+      NODE_ENV: homologation
+      EVOLUTION_API_URL: http://mock:4000/evolution
+      EVOLUTION_INSTANCE_NAME: Cedipi
+      OPENAI_API_KEY: dummy-staging-only-do-not-use
+      LARA_OPENAI_MODEL: homologation-mock
+      LARA_OPENAI_ENDPOINT: http://mock:4000/openai/v1/responses
+      CEDIPI_AI_CONTROL_BACKEND: database
+      LARA_INGEST_ENABLED: "true"
+      LARA_OUTBOUND_ENABLED: "true"
+      LARA_CUTOVER_CONFIRMED: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mock:
+        condition: service_started
+    networks: [isolated]
+    restart: unless-stopped
+volumes:
+  postgres_data:
+networks:
+  isolated:
+    internal: true

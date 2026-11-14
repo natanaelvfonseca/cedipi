@@ -372,3 +372,15 @@ test("handoff pause failure prevents outbound WhatsApp", async () => {
   assert.equal((await worker.runOnce()).status, "manual_review");
   assert.equal(calls.some((x) => x[0] === "send"), false);
 });
+
+test("uncertain WhatsApp delivery pauses Lara for that contact", async () => {
+  const { worker, calls } = fakeWorker({
+    worker: {
+      evolutionFactory: () => ({
+        sendText: async () => { throw new Error("simulated uncertainty"); },
+      }),
+    },
+  });
+  assert.equal((await worker.runOnce()).status, "manual_review");
+  assert.ok(calls.some((item) => item[0] === "pause" && item[1] === phone && item[2] === false));
+});

@@ -156,3 +156,23 @@ npm run build
 # Em Postgres de homologacao, apos backup:
 npm run db:migrate
 node --test test/lara-postgres.test.js
+
+## Homologacao isolada reproduzivel (terceira etapa)
+
+Os arquivos homologation/docker-compose.yml e scripts/homologation/* oferecem
+uma pilha de teste com banco proprio, API e worker nativos e dois endpoints
+falsos (WhatsApp Evolution e OpenAI), sem acesso a dados ou numeros reais.
+A API publica apenas localhost:18083 no host que executar Compose.
+O segredo da homologacao reside em arquivo chmod 600 NAO versionado.
+
+O teste scripts/homologation/smoke.mjs verifica do HTTP ate o banco e
+o retorno fake WhatsApp: autenticacao, mensagem duplicada, agrupamento,
+historico, consulta textual, pedido de agendamento encaminhado, pausa
+da Lara e quarentena de falhas incertas.
+
+O script recusa execucao se NODE_ENV, URL do banco ou servicos externos
+nao identificarem o ambiente isolado explicitamente.
+
+NUNCA usar chaves ou numeros de pacientes reais na homologacao com mocks.
+O ambiente ainda NAO prova conectividade real de OpenAI/Evolution da clinica.
+A execucao de testes do CI cria e elimina os containers, sem retencao de dados.

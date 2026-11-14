@@ -98,6 +98,7 @@ export function createLaraWorker({
         // This could have reached WhatsApp. Do not retry automatically.
         await repo.markLaraDeliveryUncertain(job, "delivery_uncertain");
         await repo.createLaraHandoff(job.phone, "delivery_uncertain");
+        await setEnabled(job.phone, false);
         await release();
         return publicStatus("manual_review");
       }
@@ -105,6 +106,7 @@ export function createLaraWorker({
       if (typeof outboundId !== "string" || !outboundId) {
         await repo.markLaraDeliveryUncertain(job, "delivery_ack_missing");
         await repo.createLaraHandoff(job.phone, "delivery_ack_missing");
+        await setEnabled(job.phone, false);
         await release();
         return publicStatus("manual_review");
       }
@@ -114,6 +116,7 @@ export function createLaraWorker({
         // Message may already have reached the patient. No resends.
         await repo.markLaraDeliveryUncertain(job, "confirmation_uncertain");
         await repo.createLaraHandoff(job.phone, "confirmation_uncertain");
+        await setEnabled(job.phone, false);
         await release();
         return publicStatus("manual_review");
       }

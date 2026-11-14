@@ -46,7 +46,10 @@ export function createLaraModel({
   apiKey = process.env.OPENAI_API_KEY,
   model = process.env.LARA_OPENAI_MODEL ?? "gpt-5.4-mini",
   fetchImpl = fetch,
-  endpoint = "https://api.openai.com/v1/responses",
+  // Custom endpoint is only possible in the sealed homologation environment.
+  endpoint = process.env.NODE_ENV === "homologation"
+    ? (process.env.LARA_OPENAI_ENDPOINT ?? "https://api.openai.com/v1/responses")
+    : "https://api.openai.com/v1/responses",
 } = {}) {
   return {
     async answer({ messages, sources }) {
