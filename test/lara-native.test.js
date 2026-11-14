@@ -51,7 +51,7 @@ test("Evolution normalizer accepts only inbound individual texts for Cedipi", ()
   }), null);
   assert.equal(normalizeEvolutionMessage({
     ...payload, data: { ...payload.data, message: { audioMessage: {} } },
-  }), null);
+  }).text, "Áudio recebido (requer atendimento humano)");
   assert.equal(normalizeEvolutionMessage({
     ...payload, data: { ...payload.data, message: {
       extendedTextMessage: { text: "  Onde fica?  " },
@@ -249,6 +249,7 @@ function fakeWorker(overrides = {}) {
     canReply: async () => true,
     setEnabled: async (...args) => calls.push(["pause",...args]),
     model,
+    clinicalAssistant: { answer: async () => null },
     evolutionFactory: () => ({
       sendText: async (...args) => {
         calls.push(["send", ...args]);
