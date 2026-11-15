@@ -304,8 +304,9 @@ Trocar a chave apos uso inicial porque ela foi publicada em uma conversa.
 
 ## Leitura de imagens e PDFs no WhatsApp (migration 011)
 
-A recepcao pode abrir a tela Conversas e usar **Ler com Lara IA** em
-imagens e documentos. O backend pega o arquivo da Evolution **Cedipi**,
+O worker da Lara recebe automaticamente imagens e documentos na
+conversa WhatsApp; a recepcao continua podendo abrir o arquivo original
+na tela Conversas. O backend pega o arquivo da Evolution **Cedipi**,
 valida o tipo real pelos bytes (JPEG, PNG, WebP e PDF) e os tamanhos
 ate 8 MiB/imagem ou 12 MiB/PDF. O endpoint de analise e autenticado;
 nao existe upload publico ou download externo sem autenticar o operador.
@@ -334,3 +335,30 @@ Antes de ativar para todo o publico, conferir bases legais, transparencia
 e governanca da LGPD para dados sensiveis de saude, com a clinica.
 Manter o webhook global no n8n e o teste nativo restrito a um unico
 numero ate o corte completo e aprovado.
+
+
+## Pedido medico recebido por WhatsApp inicia agendamento automaticamente
+
+A partir da versao de atendimento multimodal conversacional, nao existe
+botao "Ler com Lara IA" na tela de Conversas e o endpoint manual POST
+de analise de anexos foi desativado. A leitura acontece no worker nativo
+depois de a Evolution informar a chegada de imagem/PDF no WhatsApp.
+
+Para pedidos medicos legiveis: o modelo extrai os nomes dos exames, a
+Lara verifica os nomes no catalogo OFICIAL da clinica, guarda o estado da
+conversa na tabela lara_conversation_state e pergunta a data, sem exigir
+que o paciente repita "quero agendar". Se houver varios exames, a Lara
+oferece uma selecao e consulta a agenda do medico apos a escolha.
+A reserva efetiva ocorre apenas ao final, depois de confirmacao explicita
+do horario e nome do paciente, pela transacao nativa do PostgreSQL.
+
+Se o paciente envia multiplas fotos no mesmo lote, a Lara analisa
+as paginas em paralelo e considera os exames encontrados em todas elas.
+Fotos de comprovantes entram em revisao manual de pagamento; documento
+ilegivel nao origina exame ficticio. Sem audio transcrito nesta etapa.
+
+ATENCAO: LARA_TEST_MODE=true segue estritamente limitado ao numero de
+teste autorizado. O webhook global continua com o fluxo legado n8n.
+Nao ativar o cutover para todos os pacientes sem homologar o recebimento
+real de anexos Evolution -> Lara -> WhatsApp e definir a rota exclusiva
+de entrada, para evitar respostas duplicadas e conflitos na agenda.

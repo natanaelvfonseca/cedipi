@@ -165,31 +165,3 @@ export async function patchConversationAiControl(
   if (typeof payload.enabled !== "boolean") throw new WhatsAppInboxApiError();
   return payload.enabled;
 }
-
-export type WhatsAppMediaAnalysis = {
- status:"done"|"processing"|"failed";
- category:"medical_order"|"payment_proof"|"other_document"|"unreadable"|null;
- summary:string|null;
- exam_names:string[];
- readable:boolean|null;
- review_required:boolean;
- analyzed_at:string|null;
-};
-export async function getWhatsAppMediaAnalysis(
- conversationId:string,messageId:string,fetchImpl:typeof fetch=apiFetch,
-){
- const result=await requestJson<{ok:true;analysis:WhatsAppMediaAnalysis|null}>(
-  `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/analysis`,
-  {},fetchImpl,
- );
- return result.analysis;
-}
-export async function analyzeWhatsAppMedia(
- conversationId:string,messageId:string,fetchImpl:typeof fetch=apiFetch,
-){
- const result=await requestJson<{ok:true;analysis:WhatsAppMediaAnalysis}>(
-  `/api/whatsapp/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/analysis`,
-  {method:"POST"},fetchImpl,
- );
- return result.analysis;
-}

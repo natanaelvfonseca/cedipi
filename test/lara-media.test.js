@@ -133,13 +133,23 @@ test("worker reads media and sends document-request guidance with no diagnosis",
   enabled:true,cutoverConfirmed:true,controlBackend:"database",
   allowedPhone:phone,canReply:async()=>true,repo,
   mediaEnabled:true,
+  clinicalAssistant:{
+   handleMedicalOrder:async ({phone:contact,examNames})=>{
+    assert.equal(contact,phone);
+    assert.deepEqual(examNames,["Ultrassom de tireoide"]);
+    return {text:"Recebi seu pedido médico: Ultrassom de tireoide. "
+      +"Qual data prefere para agendar?",handoffReason:null};
+   },
+   answer:async()=>assert.fail("Media must be handled as part of booking conversation"),
+  },
   mediaService:{process:async args=>{
    assert.equal(args.sourceJid,"123456789012345@lid");
    return {status:"done",category:"medical_order",readable:true,
     exam_names:["Ultrassom de tireoide"]};
   }},
   evolutionFactory:()=>({sendText:async(target,text)=>{
-   assert.equal(target,phone);assert.match(text,/Quero agendar Ultrassom de tireoide/);
+   assert.equal(target,phone);
+   assert.match(text,/Qual data prefere para agendar/);
    return {key:{id:"sent-media-1"}};
   }}),
  });
@@ -157,4 +167,20 @@ test("patient identifiers are removed from summaries and never offered as exams"
  assert.equal(privateReply.summary.includes("maria@exemplo.com"),false);
  assert.equal(privateReply.summary.includes("5511999999999"),false);
  assert.deepEqual(privateReply.examNames,["Ultrassom de tireoide"]);
+});
+
+test("Payment screenshot is recognized but never approves its own receipt",async()=>{
+ const {replyForMediaAnalysis}=await import("../server/lara-media-service.js");
+ const response=replyForMediaAnalysis({
+  status:"done",category:"payment_proof",readable:true,exam_names:[],
+ });
+ assert.equal(response.handoffReason,"payment_proof_review");
+ assert.match(response.text,/não foi validado/i);
+});
+
+test("WhatsApp conversations UI has no manual attachment-analysis button",async()=>{
+ const {readFile}=await import("node:fs/promises");
+ const ui=await readFile(new URL("../app/conversations.tsx",import.meta.url),"utf8");
+ assert.equal(ui.includes("Ler com Lara IA"),false);
+ assert.equal(ui.includes("MediaAnalysisAction"),false);
 });

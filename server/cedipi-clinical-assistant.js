@@ -96,10 +96,10 @@ function formatSlot(option) {
 }
 function candidateText(options,day) {
   const date=day.slice(8,10)+"/"+day.slice(5,7)+"/"+day.slice(0,4);
-  return "Para "+date+", encontrei estes *horários possíveis na agenda interna*, "
-    + "sujeitos à confirmação com a recepção e com a agenda médica:\n"
+  return "Para "+date+", estes são os *horários disponíveis na agenda CEDIPI* "
+    + "(a reserva será feita após sua confirmação):\n"
     + options.map((op,i)=>(i+1)+". "+formatSlot(op)).join("\n")
-    + "\nResponda com 1, 2 ou 3 para solicitar a conferência.";
+    + "\nResponda com o número do horário que prefere.";
 }
 function examOverview(e) {
   let lines=["*"+e.name+"*",
@@ -129,6 +129,68 @@ export function createCedipiClinicalAssistant({
   now=()=>new Date(),
   modelConfigured=Boolean(readOpenAiApiKey()),
 }={}) {
+  // The prescription is part of the WhatsApp conversation, not a separate
+  // menu/action. Never create a booking from an unverified LLM extraction:
+  // resolve its names against the official CEDIPI catalog and ask the patient
+  // for a date, or to choose between multiple exams. Booking remains atomic
+  // and requires explicit patient confirmation in answer().
+  async function handleMedicalOrder({phone,examNames}) {
+    const official=await repo.listOfficialExams();
+    const choices=[];
+    const unresolved=[];
+    for(const name of examNames.slice(0,8)) {
+      if(typeof name!=="string"||name.length>160)continue;
+      const exact=official.filter(e=>clean(e.name)===clean(name));
+      const candidates=exact.length?exact:findOfficialExamMatches(name,official);
+      if(candidates.length===1) {
+        const exam=candidates[0];
+        if(!choices.some(ch=>ch.code===exam.code))choices.push(exam);
+      } else if(candidates.length>1) {
+        // Do not silently choose Doppler, gestational subtype, biopsies, etc.
+        for(const e of candidates.slice(0,4)) {
+          if(!choices.some(ch=>ch.code===e.code))choices.push(e);
+        }
+      } else {
+        unresolved.push(name);
+      }
+    }
+    if(choices.length===0) {
+      await repo.saveLaraSession(phone,{state:"awaiting_exam"});
+      return reply("Recebi seu pedido médico, mas não consegui relacionar o exame "
+        +"com segurança ao catálogo da CEDIPI. Qual é o nome do exame que "
+        +"você deseja agendar? A recepção poderá conferir o documento original.");
+    }
+    if(choices.length===1 && unresolved.length===0) {
+      const selected=choices[0];
+      if(selected.add_on_only||!Number.isInteger(selected.duration_minutes)) {
+        return reply("Identifiquei *"+selected.name+"* no pedido, mas esse "
+          +"procedimento depende de conferência da equipe antes da reserva. "
+          +"Vou encaminhar à recepção.","exam_needs_review");
+      }
+      await repo.saveLaraSession(phone,{
+        state:"awaiting_date",exam_code:selected.code,
+        source:"medical_order",
+      });
+      return reply("Recebi seu pedido médico e identifiquei *"+selected.name+"*. "
+        +"Na CEDIPI, o valor é "+fmtPrice(selected.price_cents)+"."
+        +(selected.medical_approval?" A confirmação exige aprovação médica.":"")
+        +" Vamos agendar: *qual data você prefere?* "
+        +"Pode responder 'amanhã' ou DD/MM/AAAA.");
+    }
+    const options=choices.slice(0,6);
+    await repo.saveLaraSession(phone,{
+      state:"awaiting_exam",
+      offered_options:options.map(e=>({code:e.code})),
+      source:"medical_order",
+    });
+    const lines=options.map((e,i)=>
+      (i+1)+". "+e.name+" — "+fmtPrice(e.price_cents)).join("\n");
+    return reply("Recebi seu pedido médico e identifiquei estes exames no "
+      +"catálogo CEDIPI:\n"+lines+"\n"
+      +"*Qual deles deseja agendar primeiro?* Responda com o número. "
+      +"Depois consultaremos a agenda e concluiremos sua reserva.");
+  }
+
   async function answer({phone,batch}) {
     const raw=batch.map(e=>e.body??e.text??"").join("\n").slice(-3000);
     const message=clean(raw);
@@ -219,7 +281,10 @@ export function createCedipiClinicalAssistant({
         await repo.saveLaraSession(phone,{state:"idle"});
         return reply("Sem problemas. Não registrei nenhuma solicitação. Em que posso ajudar?");
       }
-      return reply("Posso enviar esta solicitação à recepção para conferência? Responda *sim* ou *não*. Nenhum agendamento será confirmado automaticamente.");
+      return reply(nativeEnabled
+        ?"Posso registrar o agendamento na agenda CEDIPI? Responda *sim* ou *não*. "
+          +"Nenhum horário é reservado antes da sua confirmação."
+        :"Posso enviar esta solicitação à recepção para conferência? Responda *sim* ou *não*.");
     }
 
     if (session.state==="awaiting_name" && current) {
@@ -232,7 +297,14 @@ export function createCedipiClinicalAssistant({
       });
       return reply("Entendi, "+name+". Você escolheu *"+current.name+"*, "
         +formatSlot({start:session.selected_start,doctor:session.selected_doctor_name})
-        +". Posso encaminhar este pedido para a recepção verificar a disponibilidade e concluir a confirmação? Responda *sim* ou *não*. Este horário ainda não está reservado.");
+        +(nativeEnabled
+          ? ". Posso *registrar este agendamento na agenda CEDIPI*? Responda *sim* ou *não*. "
+            +"O horário será reservado após sua confirmação. "
+            +(current.medical_approval?"Este procedimento também exige aprovação médica. "
+              :current.price_cents>=40000
+                ?"A confirmação final dependerá da conferência do adiantamento. ":"")
+          : ". Posso encaminhar este pedido para a recepção verificar a disponibilidade? "
+            +"Responda *sim* ou *não*. O horário ainda não está reservado."));
     }
 
     if (session.state==="awaiting_slot" && current) {
@@ -251,7 +323,8 @@ export function createCedipiClinicalAssistant({
         selected_day:session.selected_day,selected_start:option.start,
         selected_doctor_name:option.doctor,
       });
-      return reply("Opção "+choice+": "+formatSlot(option)+". Para solicitar a conferência desse horário, qual é seu *nome e sobrenome*?");
+      return reply("Opção "+choice+": "+formatSlot(option)+". "
+        +"Para continuar o agendamento, qual é seu *nome e sobrenome*?");
     }
 
     const matches=findOfficialExamMatches(raw,exams);
@@ -325,7 +398,7 @@ export function createCedipiClinicalAssistant({
     // Deterministic booking/medical/payment rules above always take priority.
     return modelConfigured ? null : reply(STAFF,"unknown_information");
   }
-  return { answer };
+  return { answer, handleMedicalOrder };
 }
 
 export { parseDay, examOverview };

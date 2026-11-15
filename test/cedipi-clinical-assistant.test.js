@@ -46,7 +46,7 @@ function testAssistant() {
  };
  const assistant=createCedipiClinicalAssistant({repo:fakeRepo,now:()=>knownDate});
  const ask=(text,phone="5511999999999")=>assistant.answer({phone,batch:[{body:text}]});
- return {ask,sessions,requests,calls};
+ return {ask,assistant,sessions,requests,calls};
 }
 
 test("catalog matcher distinguishes Doppler, PAAF and morphology precisely",()=>{
@@ -85,7 +85,7 @@ test("booking is conversational but never confirms an unverified Google Calendar
  let r=await ask("Quero agendar ultrassom de tireoide");
  assert.match(r.text,/qual.*data/i);
  r=await ask("17/11/2026");
- assert.match(r.text,/horários possíveis/);
+ assert.match(r.text,/horários disponíveis na agenda CEDIPI/);
  assert.equal(calls.slotQueries,1);
  assert.equal(sessions.get("5511999999999").state,"awaiting_slot");
  r=await ask("1");
@@ -221,4 +221,57 @@ test("native payment reservation never exposes a Pix key before slot confirmatio
  assert.match(result.text,/Pré-reserva/);
  assert.equal(result.handoffReason,"payment_review");
  assert.doesNotMatch(result.text,/\d{3}\.\d{3}\.\d{3}-\d{2}/);
+});
+
+test("WhatsApp medical-order PDF starts scheduling without another command or button",async()=>{
+ const {assistant,ask,sessions,requests}=testAssistant();
+ const phone="5511999999999";
+ let r=await assistant.handleMedicalOrder({
+  phone,examNames:["Ultrassom de tireoide"],
+ });
+ assert.match(r.text,/Recebi seu pedido médico/);
+ assert.match(r.text,/qual data você prefere/i);
+ assert.equal(r.handoffReason,null);
+ assert.equal(sessions.get(phone).state,"awaiting_date");
+ assert.equal(sessions.get(phone).exam_code,exam.code);
+ r=await ask("17/11/2026");
+ assert.match(r.text,/horários disponíveis na agenda CEDIPI/);
+ r=await ask("1");
+ assert.match(r.text,/nome e sobrenome/);
+ r=await ask("Maria Silva");
+ assert.match(r.text,/sim.*não/);
+ r=await ask("sim");
+ assert.equal(requests.length,1);
+ assert.equal(requests[0].exam.code,exam.code);
+ assert.equal(requests[0].patientName,"Maria Silva");
+});
+
+test("Medical order with multiple exams asks which before offering times",async()=>{
+ const {assistant,ask,sessions}=testAssistant();
+ const phone="5511999999999";
+ let r=await assistant.handleMedicalOrder({
+  phone,examNames:["Ultrassom de tireoide","Ultrassom de tireoide com doppler"],
+ });
+ assert.match(r.text,/Qual deles deseja agendar primeiro/);
+ assert.match(r.text,/1\. Ultrassom de tireoide/);
+ assert.match(r.text,/2\. Ultrassom de tireoide com doppler/);
+ assert.equal(sessions.get(phone).state,"awaiting_exam");
+ r=await ask("2");
+ assert.match(r.text,/doppler/i);
+ assert.equal(sessions.get(phone).exam_code,doppler.code);
+ assert.equal(sessions.get(phone).state,"awaiting_date");
+});
+
+test("Unknown, ambiguous and incomplete orders never reserve invented procedures",async()=>{
+ const {assistant,sessions}=testAssistant();
+ const phone="5511999999999";
+ const unknownOrder=await assistant.handleMedicalOrder({
+  phone,examNames:["Procedimento inexistente na clínica"],
+ });
+ assert.match(unknownOrder.text,/não consegui relacionar/i);
+ assert.equal(sessions.get(phone).state,"awaiting_exam");
+ const incomplete=await assistant.handleMedicalOrder({
+  phone,examNames:["Core-Biopsy de partes moles"],
+ });
+ assert.equal(incomplete.handoffReason,"exam_needs_review");
 });
