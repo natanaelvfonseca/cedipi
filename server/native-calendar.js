@@ -42,21 +42,37 @@ export async function reserveNativeClinicAppointment({
   const client=await pool.connect();
   try {
     await client.query("BEGIN;");
+    // Pricing, medical approval, duration and allowed doctors MUST come from
+    // the official catalog in the transaction, never from the chat payload.
+    const catalog=await client.query(
+      "SELECT code,name,price_cents,duration_minutes,doctor_names,"
+      + "medical_approval,doctor_review,add_on_only"
+      + " FROM cedipi_exam_catalog WHERE code=$1 AND active=TRUE FOR SHARE;",
+      [exam.code],
+    );
+    const official=catalog.rows[0];
+    if(!official || official.add_on_only || !official.duration_minutes ||
+       (official.doctor_review && !official.medical_approval))
+      throw new NativeCalendarError("exam_requires_staff",409);
+    if(exam.duration_minutes!==official.duration_minutes ||
+       exam.price_cents!==official.price_cents ||
+       Boolean(exam.medical_approval)!==official.medical_approval)
+      throw new NativeCalendarError("exam_information_changed",409);
     const dr=await client.query(
       "SELECT id,name FROM doctors WHERE name=$1 AND active=TRUE FOR UPDATE;",
       [doctor],
     );
     const d=dr.rows[0];
-    if(!d || !exam.doctor_names.includes(d.name)) throw new NativeCalendarError("doctor_unavailable");
+    if(!d || !official.doctor_names.includes(d.name)) throw new NativeCalendarError("doctor_unavailable");
     const checks=await client.query(
       "SELECT $1::timestamptz AS start_time,"
       + " $1::timestamptz+make_interval(mins=>$2::int) AS end_time,"
-      + " ($1::timestamptz AT TIME ZONE $3)::date AS local_date,"
+      + " to_char($1::timestamptz AT TIME ZONE $3, 'YYYY-MM-DD') AS local_date,"
       + " ($1::timestamptz AT TIME ZONE $3)::time AS local_time;",
-      [start,exam.duration_minutes,zone],
+      [start,official.duration_minutes,zone],
     );
     const time=checks.rows[0];
-    if(!time || time.local_date.toISOString().slice(0,10)!==date ||
+    if(!time || time.local_date!==date ||
        time.start_time.getTime() < Date.now()+2*3600000 ||
        time.start_time.getTime() > Date.now()+45*86400000) {
       throw new NativeCalendarError("time_out_of_range",422);
@@ -68,7 +84,7 @@ export async function reserveNativeClinicAppointment({
       + " AND ($3::time+make_interval(mins=>$4::int))<=s.ends_at"
       + " AND MOD(EXTRACT(EPOCH FROM ($3::time-s.starts_at))::integer,"
       + " s.slot_duration_minutes*60)=0 LIMIT 1;",
-      [d.id,date,time.local_time,exam.duration_minutes],
+      [d.id,date,time.local_time,official.duration_minutes],
     );
     if(!schedule.rowCount)throw new NativeCalendarError("outside_medical_schedule");
     const conflicts=await client.query(
@@ -92,8 +108,8 @@ export async function reserveNativeClinicAppointment({
       + " RETURNING id;",
       [randomUUID(),patientName.trim(),phone],
     );
-    const needsApproval=exam.medical_approval===true;
-    const needsPayment=exam.price_cents>=40000;
+    const needsApproval=official.medical_approval===true;
+    const needsPayment=official.price_cents>=40000;
     const status=needsApproval?"awaiting_medical_approval":needsPayment
       ?"awaiting_payment_proof":"confirmed";
     const appointmentStatus=status==="confirmed"?"confirmed":"pending";
@@ -101,10 +117,10 @@ export async function reserveNativeClinicAppointment({
       "INSERT INTO appointments"
       + "(id,patient_id,doctor_id,exam_code,exam_name,starts_at,ends_at,"
       + "status,source,hold_expires_at)"
-      + " VALUES($1,$2,$3,$4,$5,$6,$7,$8,'lara',"
-      + " CASE WHEN $8='pending' THEN LEAST(NOW()+interval '24 hours',$6::timestamptz)"
+      + " VALUES($1,$2,$3,$4,$5,$6,$7,$8::varchar,'lara',"
+      + " CASE WHEN $8::varchar='pending' THEN LEAST(NOW()+interval '24 hours',$6::timestamptz)"
       + " ELSE NULL END) RETURNING id,status,starts_at,ends_at;",
-      [randomUUID(),patient.rows[0].id,d.id,exam.code,exam.name,time.start_time,
+      [randomUUID(),patient.rows[0].id,d.id,official.code,official.name,time.start_time,
         time.end_time,appointmentStatus],
     );
     const req=await client.query(
@@ -113,19 +129,19 @@ export async function reserveNativeClinicAppointment({
       + "patient_name,status,appointment_id)"
       + " VALUES($1,$2,$3,$4,$5,$6,$7,$8)"
       + " RETURNING id,status,appointment_id;",
-      [phone,exam.code,date,time.start_time,doctor,patientName.trim(),status,ap.rows[0].id],
+      [phone,official.code,date,time.start_time,doctor,patientName.trim(),status,ap.rows[0].id],
     );
     await client.query(
       "INSERT INTO cedipi_appointment_events(appointment_id,event_type,actor,details)"
       + " VALUES($1,$2,'lara',$3::jsonb);",
-      [ap.rows[0].id,"created",JSON.stringify({status,exam:exam.code})],
+      [ap.rows[0].id,"created",JSON.stringify({status,exam:official.code})],
     );
     await client.query("COMMIT;");
     return {
       id:req.rows[0].id, appointmentId:ap.rows[0].id,
-      status,doctor:d.name,examName:exam.name,
+      status,doctor:d.name,examName:official.name,
       start:time.start_time.toISOString(),end:time.end_time.toISOString(),
-      depositCents:needsPayment?Math.round(exam.price_cents*0.2):0,
+      depositCents:needsPayment?Math.round(official.price_cents*0.2):0,
       holdExpiresAt:appointmentStatus==="pending"
         ?new Date(Math.min(Date.now()+86400000,time.start_time.getTime())).toISOString():null,
     };
@@ -177,10 +193,10 @@ export async function applyNativeBookingAction({
       status="confirmed";
     }
     const update=await client.query(
-      "UPDATE lara_booking_requests SET status=$2,"
+      "UPDATE lara_booking_requests SET status=$2::varchar,"
       + "medical_approved_at=CASE WHEN $3='approve_medical' THEN NOW() ELSE medical_approved_at END,"
       + "payment_verified_at=CASE WHEN $3='verify_payment' THEN NOW() ELSE payment_verified_at END,"
-      + "completed_at=CASE WHEN $2 IN ('confirmed','cancelled') THEN NOW() ELSE completed_at END,"
+      + "completed_at=CASE WHEN $2::varchar IN ('confirmed','cancelled') THEN NOW() ELSE completed_at END,"
       + "updated_at=NOW() WHERE id=$1 RETURNING id,status;",
       [id,status,action],
     );
