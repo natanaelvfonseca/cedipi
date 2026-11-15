@@ -54,6 +54,12 @@ test("catalog matcher distinguishes Doppler, PAAF and morphology precisely",()=>
  assert.deepEqual(findOfficialExamMatches("Preço do ultrassom de tireoide com doppler",all).map(e=>e.code),[doppler.code]);
  assert.deepEqual(findOfficialExamMatches("PAAF de tireoide",all).map(e=>e.code),[paaf.code]);
  assert.deepEqual(findOfficialExamMatches("ultrassom morfológico 2º trimestre",all).map(e=>e.code),[morfo.code]);
+ assert.deepEqual(findOfficialExamMatches(
+   "Qual o valor e duração do ultrassom de tireoide?",all
+ ).map(e=>e.code),[exam.code]);
+ assert.deepEqual(findOfficialExamMatches(
+   "Quanto tempo demora o ultrassom de tireoide?",all
+ ).map(e=>e.code),[exam.code]);
  assert.equal(findOfficialExamMatches("Qual é o endereço?",all).length,0);
 });
 

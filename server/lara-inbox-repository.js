@@ -76,14 +76,51 @@ export async function latestLaraHistory(phone, pool = getDatabasePool(), limit =
   return result.rows;
 }
 
+// Natural patient questions contain words such as "qual", "preço" and
+// "duração". Requiring EVERY word to occur in a document makes the search
+// return nothing even when the exact requested exam exists in the catalog.
+const ragQuestionWords = new Set([
+  "qual","quais","quanto","quantos","quanta","quantas","custa","custo",
+  "preco","valor","duracao","tempo","demora","minuto","minutos","leva",
+  "exame","exames","procedimento","procedimentos","clinica","cedipi",
+  "saber","informar","gostaria","quero","preciso","poderia","podem",
+  "pode","fazer","realizar","recepcao","informacao","informacoes",
+  "com","sem","para","por","uma","uns","que","este","esta","esse","essa",
+  "dos","das","como","onde","hoje","amanha","mais","seria"
+]);
+export function buildLaraSearchQuery(text) {
+  if(typeof text !== "string") return "";
+  const normalized=text.normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase();
+  const terms=[...new Set((normalized.match(/[a-z0-9]{4,}/g)??[])
+    .filter(word=>!ragQuestionWords.has(word)))].slice(0,8);
+  // websearch_to_tsquery uses OR instead of AND, while ranking prioritizes
+  // terms in titles. These terms are strictly alphanumeric, so no tsquery
+  // control characters can come from a patient's untrusted message.
+  return terms.join(" OR ");
+}
+
 export async function relevantLaraKnowledge(query, pool = getDatabasePool()) {
-  const result = await pool.query(
+  const strict = await pool.query(
     "SELECT title, left(content, 2000) AS content FROM lara_knowledge_sources"
     + " WHERE active = TRUE AND to_tsvector('portuguese', content || ' ' || title)"
     + " @@ plainto_tsquery('portuguese', $1)"
     + " ORDER BY ts_rank(to_tsvector('portuguese', content || ' ' || title),"
     + " plainto_tsquery('portuguese', $1)) DESC LIMIT 4;",
     [query.slice(0, 400)],
+  );
+  if(strict.rows.length>0) return strict.rows;
+  const alternative = buildLaraSearchQuery(query);
+  if(!alternative) return [];
+  const result = await pool.query(
+    "SELECT title, left(content, 2000) AS content FROM lara_knowledge_sources"
+    + " WHERE active = TRUE AND to_tsvector('portuguese', content || ' ' || title)"
+    + " @@ websearch_to_tsquery('portuguese', $1)"
+    + " ORDER BY 4*ts_rank(to_tsvector('portuguese', title),"
+    + " websearch_to_tsquery('portuguese', $1))"
+    + " + ts_rank(to_tsvector('portuguese',content || ' ' || title),"
+    + " websearch_to_tsquery('portuguese', $1)) DESC LIMIT 4;",
+    [alternative],
   );
   return result.rows;
 }
