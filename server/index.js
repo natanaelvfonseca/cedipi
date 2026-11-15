@@ -1,7 +1,9 @@
 import { createApp } from "./app.js";
 import { closeDatabasePool } from "./database.js";
 import { createAuthService } from "./auth-service.js";
+import { getGlobalAiEnabled } from "./ai-control-repository.js";
 import { startLaraTestMode } from "./lara-test-mode.js";
+import { startLaraProductionMode } from "./lara-production-mode.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const authService = createAuthService();
@@ -16,7 +18,17 @@ try {
 const app = createApp({ authService });
 
 let stopTestMode = () => {};
-if (process.env.LARA_TEST_MODE === "true") {
+if (process.env.LARA_PRODUCTION_MODE === "true") {
+  try {
+    if (await getGlobalAiEnabled() !== true)
+      throw new Error("AI global switch is paused");
+    stopTestMode = startLaraProductionMode();
+  } catch (error) {
+    console.error("Lara production startup blocked: ", error.message);
+    await closeDatabasePool();
+    process.exit(1);
+  }
+} else if (process.env.LARA_TEST_MODE === "true") {
   try {
     stopTestMode = startLaraTestMode();
   } catch {

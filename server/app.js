@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { createDatabaseHealthHandler } from "./database-health.js";
+import { createLaraOperationsHandler } from "./lara-operations-handlers.js";
 import { createLaraWebhookHandler } from "./lara-webhook.js";
 import {
  createGetMediaAnalysisHandler,
@@ -79,7 +80,7 @@ export function createApp({
 
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
-  app.post("/api/webhooks/evolution/lara", express.json({ limit: "32kb" }), createLaraWebhookHandler());
+  app.post("/api/webhooks/evolution/lara", express.json({ limit: "128kb" }), createLaraWebhookHandler());
   app.use(express.json({ limit: "32kb" }));
   app.use("/api", verifySameOrigin);
   app.get("/api/health/database", createDatabaseHealthHandler());
@@ -107,6 +108,7 @@ export function createApp({
   app.patch("/api/users/:userId", requireAdmin, users.update);
   app.post("/api/users/:userId/reset-password", requireAdmin, users.resetPassword);
   app.get("/api/lara/readiness", requireAdmin, createLaraReadinessHandler());
+  app.get("/api/lara/operations", requireAdmin, createLaraOperationsHandler());
   app.get("/api/lara/catalog", requireAdmin, createListOfficialCatalogHandler());
   app.get("/api/lara/booking-requests", requireAdmin, createListBookingRequestsHandler());
   app.post("/api/lara/booking-requests/:id/action", requireAdmin,

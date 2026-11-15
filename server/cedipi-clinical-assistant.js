@@ -232,6 +232,12 @@ export function createCedipiClinicalAssistant({
             });
           } catch(error) {
             if (error instanceof NativeCalendarError) {
+              if (error.code==="calendar_not_verified") {
+                return reply("Para não oferecer um horário já ocupado, preciso "
+                  +"encaminhar a confirmação à recepção. Ela verificará a agenda "
+                  +"atual dos médicos antes de concluir sua marcação.",
+                  "calendar_verification");
+              }
               await repo.saveLaraSession(phone,{state:"awaiting_date",exam_code:current.code});
               return reply("Esse horário não está mais disponível na agenda da CEDIPI. "
                 + "Informe outra data para consultar novas opções.");
