@@ -14,6 +14,12 @@ type Readiness = { officialDocuments: number; officialExams: number;
   googleCalendarConfigured: boolean; nativeCalendarConfigured?: boolean;
   bookingAutoConfirmationAvailable: boolean;
   whatsappTestMode: boolean; nativeCutover: boolean; status: string };
+type Operations = {
+  globalAiEnabled:boolean; queue:Record<string,number>;
+  openHandoffs:number; overdueMessages:number; uncertainDeliveries:number;
+  pendingBookings:Record<string,number>;
+  runtime:{enabled:boolean;lastTickAt:string|null;errors:number;webhookHealthy:boolean};
+};
 type BookingRequest = { id: string; phone: string; exam_name: string;
   appointment_id?: string | null;
   preferred_date: string | null; preferred_start: string | null;
@@ -56,6 +62,7 @@ export function LaraManagement({
   const [bookingRequests,setBookingRequests] = useState<BookingRequest[]>([]);
   const [search,setSearch] = useState("");
   const [readiness,setReadiness] = useState<Readiness | null>(null);
+  const [operations,setOperations] = useState<Operations | null>(null);
   const [officialDocs,setOfficialDocs] = useState<OfficialDoc[]>([]);
   const [openedDoc,setOpenedDoc] = useState<number | null>(null);
   const [openedContent,setOpenedContent] = useState("");
@@ -70,12 +77,13 @@ export function LaraManagement({
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [knowledge, handoffsResult, catalog, bookings, statusResult] = await Promise.all([
+      const [knowledge, handoffsResult, catalog, bookings, statusResult, operationsResult] = await Promise.all([
         requestApi<{ ok: true; sources: Knowledge[] }>("/api/lara/knowledge"),
         requestApi<{ ok: true; handoffs: Handoff[] }>("/api/lara/handoffs"),
         requestApi<{ ok: true; exams: Exam[]; documents: OfficialDoc[] }>("/api/lara/catalog"),
         requestApi<{ ok: true; requests: BookingRequest[] }>("/api/lara/booking-requests"),
         requestApi<{ ok: true; readiness: Readiness }>("/api/lara/readiness"),
+        requestApi<{ ok: true } & Operations>("/api/lara/operations"),
       ]);
       setSources(knowledge.sources);
       setHandoffs(handoffsResult.handoffs);
@@ -83,6 +91,7 @@ export function LaraManagement({
       setOfficialDocs(catalog.documents);
       setBookingRequests(bookings.requests);
       setReadiness(statusResult.readiness);
+      setOperations(operationsResult);
     } catch {
       setError("Não foi possível consultar os dados da Lara. Confira a conexão e as migrations.");
     } finally {
@@ -182,7 +191,7 @@ export function LaraManagement({
     </header>
     <div className="lara-admin-intro">
       <Sparkles size={19} />
-      <span>Base oficial CEDIPI: médicos, valores, durações e preparos. Os horários exibidos pela IA são preliminares até a conferência da agenda externa e, quando aplicável, a aprovação médica. Este painel não ativa envios automáticos.</span>
+      <span>Base oficial CEDIPI: médicos, valores, durações e preparos. Os horários dependem da agenda própria da CEDIPI e da confirmação do paciente e, quando aplicável, a aprovação médica. Este painel não ativa envios automáticos.</span>
     </div>
     {readiness ? <div className="lara-admin-panel">
       <strong>Prontidão operacional</strong>
@@ -196,6 +205,20 @@ export function LaraManagement({
           : "não habilitado"}.
       </p>
     </div> : null}
+    {operations ? <section className="lara-admin-panel">
+      <strong>Monitoramento do atendimento real</strong>
+      <p className="lara-admin-note">
+        IA global: {operations.globalAiEnabled ? "ativa" : "pausada"} ·
+        Processadores: {operations.runtime.enabled ? "ativos" : "não iniciados"} ·
+        Pendências na fila: {operations.queue.pending ?? 0} ·
+        Mensagens atrasadas: {operations.overdueMessages} ·
+        Entregas incertas: {operations.uncertainDeliveries} ·
+        Encaminhamentos abertos: {operations.openHandoffs}.
+      </p>
+      {(operations.overdueMessages>0 || operations.uncertainDeliveries>0)
+        ? <p role="alert">Há atendimentos que exigem verificação da equipe.</p>
+        : null}
+    </section> : null}
     <div className="lara-admin-tabs" role="tablist" aria-label="Gestão da Lara">
       <button role="tab" aria-selected={tab === "catalog"} className={tab === "catalog" ? "active" : ""}
         onClick={() => setTab("catalog")}>Catálogo oficial ({exams.length})</button>
@@ -256,7 +279,7 @@ export function LaraManagement({
       ) : tab === "requests" ? (
         <section className="lara-admin-panel">
           <h2>Solicitações aguardando conferência</h2>
-          <p className="lara-admin-note">Estas solicitações NÃO são agendamentos confirmados. Confira a agenda externa, o procedimento e a eventual taxa antes de finalizar o atendimento na conversa.</p>
+          <p className="lara-admin-note">Estas solicitações NÃO são agendamentos confirmados. Confira a agenda CEDIPI, o procedimento e a eventual taxa antes de finalizar o atendimento na conversa.</p>
           {!bookingRequests.length ? <p className="lara-admin-empty">Nenhuma solicitação pendente.</p> :
             <div className="lara-admin-list">{bookingRequests.map((item) => (
               <div className="lara-admin-item" key={item.id}>

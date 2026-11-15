@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { readLaraWebhookSecret } from "./lara-webhook-secret.js";
 import { normalizeEvolutionMessage } from "./lara-event-normalizer.js";
 import { enqueueLaraMessage } from "./lara-inbox-repository.js";
 
@@ -11,7 +12,8 @@ function tokenMatches(expected, received) {
 
 export function createLaraWebhookHandler({
   enabled = process.env.LARA_INGEST_ENABLED === "true",
-  secret = process.env.LARA_WEBHOOK_SECRET,
+  secret = readLaraWebhookSecret(),
+  activateAfter = Number(process.env.LARA_CUTOVER_UNIX_SECONDS || 0),
   expectedInstance = process.env.EVOLUTION_INSTANCE_NAME ?? "Cedipi",
   enqueue = enqueueLaraMessage,
 } = {}) {
@@ -22,6 +24,11 @@ export function createLaraWebhookHandler({
     }
     if (!tokenMatches(secret, request.get("x-cedipi-webhook-secret"))) {
       response.status(401).json({ ok: false, error: "unauthorized" });
+      return;
+    }
+    const timestamp = Number(request.body?.data?.messageTimestamp);
+    if (activateAfter > 0 && (!Number.isFinite(timestamp) || timestamp < activateAfter)) {
+      response.status(202).json({ ok: true, ignored: true });
       return;
     }
     const event = normalizeEvolutionMessage(request.body, expectedInstance);

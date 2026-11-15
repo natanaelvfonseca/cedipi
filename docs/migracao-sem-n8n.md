@@ -362,3 +362,51 @@ teste autorizado. O webhook global continua com o fluxo legado n8n.
 Nao ativar o cutover para todos os pacientes sem homologar o recebimento
 real de anexos Evolution -> Lara -> WhatsApp e definir a rota exclusiva
 de entrada, para evitar respostas duplicadas e conflitos na agenda.
+
+
+## Operação real da Lara — ativação e observabilidade
+
+A produção possui **dois modos mutuamente exclusivos**:
+- LARA_TEST_MODE=true: apenas uma conversa autorizada, sem alterar webhook antigo.
+- LARA_PRODUCTION_MODE=true: workers contínuos para várias conversas, fila persistente, monitoramento de entregas e webhook de instância autenticado. Não pode coexistir com modo de teste.
+
+Antes do corte, o sistema exige LARA_INGEST_ENABLED=true,
+LARA_OUTBOUND_ENABLED=true, LARA_CUTOVER_CONFIRMED=true,
+CEDIPI_AI_CONTROL_BACKEND=database, CEDIPI_APPOINTMENTS_BACKEND=native,
+LARA_MEDIA_ANALYSIS_ENABLED=true e segredo separado de autenticação do webhook.
+A chave OpenAI e o segredo do webhook ficam como Docker Secrets.
+A configuração do webhook deve apontar EXCLUSIVAMENTE para
+https://cedipi-agenda.hb8ldj.easypanel.host/api/webhooks/evolution/lara,
+com header x-cedipi-webhook-secret. Headers precisam constar no retorno
+de /webhook/find/Cedipi para o corte ser considerado concluído.
+
+O serviço de produção monitora o webhook e, somente quando
+LARA_WEBHOOK_AUTO_REPAIR=true, repara configurações perdidas pela Evolution
+após reinicialização. Mensagens anteriores ao corte podem ser filtradas por
+LARA_CUTOVER_UNIX_SECONDS para evitar respostas tardias duplicadas.
+Uma fila no PostgreSQL protege contra duplicação e separa trabalho por
+conversa. A entrega incerta nunca é reenviada automaticamente: necessita
+verificação humana.
+
+**Transição sem respostas duplicadas:** salvar a configuração anterior,
+aplicar a nova imagem e habilitar o endpoint de ingestão com workers ainda
+desligados; alterar o webhook da instância; conferir a rota e autenticação;
+desligar o fluxo n8n para esta instância; confirmar agenda e meios de
+atendimento da equipe; habilitar a IA global e os workers; observar a fila,
+entregas incertas, encaminhamentos e agendamentos. Na reversão, primeiro
+parar workers e auto-reparo, restaurar webhook anterior e depois liberar
+fluxo legado. Não deixar n8n e Lara respondendo ao mesmo paciente.
+
+**Bloqueador de agenda:** os horários semanais dos médicos não provam
+que a agenda está livre de compromissos feitos fora do PostgreSQL.
+Não habilitar confirmação automática indiscriminadamente enquanto a
+agenda atual de cada médico não estiver reconciliada com a agenda
+nativa. A exclusão transacional evita duas reservas *do próprio sistema*,
+mas não identifica compromissos externos desconhecidos.
+
+O painel Lara IA (admin) mostra o status da IA global, processadores,
+fila pendente, entregas incertas, solicitações e encaminhamentos. No
+tratamento de imagens/PDF, a OpenAI extrai apenas nomes de exames;
+comprovantes nunca são confirmados sem conferência financeira e biópsias
+continuam exigindo aprovação médica. Dados clínicos exigem governança
+de privacidade da clínica, conforme LGPD.
