@@ -29,7 +29,7 @@ export async function expireNativeHolds(pool = getDatabasePool()) {
 // Exclusion constraint on appointments remains the final concurrent safety net.
 export async function reserveNativeClinicAppointment({
   phone,exam,date,start,doctor,patientName,
-}, pool=getDatabasePool()) {
+}, pool=null) {
   if (!validPhone.test(phone ?? "") || !exam?.code ||
     !Number.isInteger(exam.duration_minutes) || exam.duration_minutes < 1 ||
     !validDate.test(date ?? "") || !Number.isFinite(Date.parse(start)) ||
@@ -38,8 +38,13 @@ export async function reserveNativeClinicAppointment({
     exam.add_on_only || exam.doctor_review && !exam.medical_approval) {
     throw new NativeCalendarError("invalid_reservation",422);
   }
-  await expireNativeHolds(pool);
-  const client=await pool.connect();
+  if (process.env.LARA_PRODUCTION_MODE === "true" &&
+      process.env.CEDIPI_NATIVE_CALENDAR_VERIFIED !== "true") {
+    throw new NativeCalendarError("calendar_not_verified",503);
+  }
+  const database=pool??getDatabasePool();
+  await expireNativeHolds(database);
+  const client=await database.connect();
   try {
     await client.query("BEGIN;");
     // Pricing, medical approval, duration and allowed doctors MUST come from

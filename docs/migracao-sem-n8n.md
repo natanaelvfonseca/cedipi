@@ -410,3 +410,5 @@ tratamento de imagens/PDF, a OpenAI extrai apenas nomes de exames;
 comprovantes nunca são confirmados sem conferência financeira e biópsias
 continuam exigindo aprovação médica. Dados clínicos exigem governança
 de privacidade da clínica, conforme LGPD.
+
+A variável CEDIPI_NATIVE_CALENDAR_VERIFIED deve permanecer `false` em produção até a conciliação da agenda real. Neste estado a Lara não registra automaticamente reservas potencialmente conflitantes: encaminha à recepção. O processo de produção também verifica que o controle global da IA está ligado antes de iniciar workers; assim mensagens enfileiradas não são consumidas silenciosamente enquanto a IA está pausada.

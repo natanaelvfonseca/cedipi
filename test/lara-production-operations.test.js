@@ -96,3 +96,25 @@ test("production runtime starts continuous independent workers and can stop",asy
  }),true);
  assert.ok(typeof startLaraProductionMode==="function");
 });
+
+test("real-patient booking fails closed if existing calendar was not reconciled",async()=>{
+ const {reserveNativeClinicAppointment,NativeCalendarError}=await import("../server/native-calendar.js");
+ const beforeMode=process.env.LARA_PRODUCTION_MODE;
+ const beforeCalendar=process.env.CEDIPI_NATIVE_CALENDAR_VERIFIED;
+ process.env.LARA_PRODUCTION_MODE="true";
+ process.env.CEDIPI_NATIVE_CALENDAR_VERIFIED="false";
+ try{
+  await assert.rejects(reserveNativeClinicAppointment({
+   phone:"5511999999999",date:"2026-11-20",
+   start:"2026-11-20T13:00:00Z",doctor:"Danilo",
+   patientName:"Pessoa Homologacao",
+   exam:{code:"ultrassom-de-tireoide",duration_minutes:15,
+     doctor_names:["Danilo"],price_cents:21000},
+  }),e=>e instanceof NativeCalendarError&&e.code==="calendar_not_verified");
+ }finally{
+  if(beforeMode===undefined)delete process.env.LARA_PRODUCTION_MODE;
+  else process.env.LARA_PRODUCTION_MODE=beforeMode;
+  if(beforeCalendar===undefined)delete process.env.CEDIPI_NATIVE_CALENDAR_VERIFIED;
+  else process.env.CEDIPI_NATIVE_CALENDAR_VERIFIED=beforeCalendar;
+ }
+});
