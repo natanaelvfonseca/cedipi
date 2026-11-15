@@ -1,3 +1,5 @@
+import { applyNativeBookingAction, NativeCalendarError } from "./native-calendar.js";
+import { readOpenAiApiKey } from "./openai-credentials.js";
 import {
   listClinicCatalogOverview, listPendingBookingRequests, readOfficialDocument,
 } from "./cedipi-clinic-repository.js";
@@ -26,17 +28,16 @@ export function createLaraReadinessHandler(overview = listClinicCatalogOverview)
   return async (_req,res)=>{
     try {
       const summary=await overview();
-      const googleCreds=Boolean(process.env.CEDIPI_GOOGLE_CLIENT_ID &&
-        process.env.CEDIPI_GOOGLE_CLIENT_SECRET &&
-        process.env.CEDIPI_GOOGLE_REFRESH_TOKEN);
-      const openaiConfigured=Boolean(process.env.OPENAI_API_KEY);
+      const openaiConfigured=Boolean(readOpenAiApiKey());
+      const nativeCalendarConfigured=process.env.CEDIPI_APPOINTMENTS_BACKEND==="native";
       const officialCount=summary.exams.length;
       res.status(200).json({ok:true,readiness:{
         officialDocuments:summary.documents.length,
         officialExams:officialCount,
         schedulesConfigured:summary.doctors.filter(x=>x.active).length,
-        openaiConfigured,googleCalendarConfigured:googleCreds,
-        bookingAutoConfirmationAvailable:false,
+        openaiConfigured,googleCalendarConfigured:false,
+        nativeCalendarConfigured,
+        bookingAutoConfirmationAvailable:nativeCalendarConfigured,
         whatsappTestMode:process.env.LARA_TEST_MODE==="true",
         nativeCutover:process.env.LARA_OUTBOUND_ENABLED==="true"
           &&process.env.LARA_CUTOVER_CONFIRMED==="true"
@@ -63,6 +64,27 @@ export function createReadOfficialDocumentHandler(read = readOfficialDocument) {
       else res.status(200).json({ok:true,sourceNumber:number,content});
     } catch {
       res.status(503).json({ok:false,error:"official_document_unavailable"});
+    }
+  };
+}
+
+export function createNativeBookingActionHandler(apply = applyNativeBookingAction) {
+  return async (request,response)=>{
+    const id=request.params.id;
+    const action=request.body?.action;
+    if(!/^[a-f0-9-]{36}$/i.test(id ?? "") ||
+       !["approve_medical","verify_payment","cancel"].includes(action)) {
+      response.status(400).json({ok:false,error:"invalid_action"});
+      return;
+    }
+    try {
+      const actor=request.user?.email??"admin";
+      const result=await apply({id,action,actor});
+      response.status(200).json({ok:true,request:result});
+    } catch(error) {
+      response.status(error instanceof NativeCalendarError?error.status:503)
+        .json({ok:false,error:error instanceof NativeCalendarError
+          ?error.code:"native_booking_unavailable"});
     }
   };
 }

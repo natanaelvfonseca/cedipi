@@ -269,3 +269,35 @@ Nenhum deles deve ser disponibilizado sem verificacao da sessao admin.
 Em modo de teste, manter o webhook global apontado para n8n,
 LARA_TEST_MODE=true apenas para um contato, e LARA_INGEST_ENABLED=false,
 LARA_OUTBOUND_ENABLED=false e LARA_CUTOVER_CONFIRMED=false.
+
+## Agenda nativa CEDIPI — sem Google ou n8n (migration 010)
+
+O codigo da agenda da Growup foi inspecionado como referencia conceitual:
+a regra de horarios livres fica separada da regra de marcar/remarcar,
+o fuso pertence ao negocio e a sobreposicao tem protecao transacional.
+A CEDIPI NAO utiliza o Google Calendar nem o banco da Growup.
+
+A migration 010 adiciona a exclusao PostgreSQL btree_gist para intervalos
+de consultas ativas do mesmo medico, aplica revisoes e guarda o estado
+de adiantamentos e aprovacao medica. A reserva da Lara valida medico,
+duracao e escala, bloqueios, disponibilidade e colisao no banco.
+A agenda usa America/Sao_Paulo e confirma imediatamente exames abaixo
+de R$ 400; valores a partir de R$ 400 criam pre-reserva de ate 24h,
+aguardando pagamento e revisao da recepcao. Biópsias/PAAF necessitam
+de aprovacao medica e podem demandar confirmacao posterior de Pix.
+A chave Pix oficial e consultada no DOCUMENTO PRIVADO somente depois
+que a pre-reserva existe e o paciente confirmou explicitamente o horario.
+
+O painel administrativo disponibiliza acao de aprovar procedimento,
+verificar pagamento e cancelar reserva; o banco registra eventos de
+auditoria e exige autorizacao administrativa nas rotas HTTP.
+A fonte de verdade e a tabela appointments e a lista de bloqueios.
+As consultas de horarios do painel e da Lara utilizam este banco.
+O campo CEDIPI_APPOINTMENTS_BACKEND=native ativa a implementacao.
+Credenciais Google Calendar nao sao exigidas.
+
+A OPENAI_API_KEY nao deve integrar Git, SQL, logs, parametros publicos ou
+frontend. Em Docker Swarm, montar um Docker secret com target
+cedipi_openai_api_key, lido em /run/secrets/cedipi_openai_api_key.
+O modulo openai-credentials suporta tambem OPENAI_API_KEY_FILE.
+Trocar a chave apos uso inicial porque ela foi publicada em uma conversa.

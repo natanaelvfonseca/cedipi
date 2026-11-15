@@ -1,3 +1,5 @@
+import { readOpenAiApiKey } from "./openai-credentials.js";
+import { reserveNativeClinicAppointment, NativeCalendarError } from "./native-calendar.js";
 import {
   listOfficialExams, readLaraSession, saveLaraSession,
   listProposedExamTimes, createBookingRequest, readOfficialDocument,
@@ -117,8 +119,10 @@ export function createCedipiClinicalAssistant({
     listOfficialExams,readLaraSession,saveLaraSession,listProposedExamTimes,
     createBookingRequest,readOfficialDocument,
   },
+  nativeBooking = reserveNativeClinicAppointment,
+  nativeEnabled = process.env.CEDIPI_APPOINTMENTS_BACKEND === "native",
   now=()=>new Date(),
-  modelConfigured=Boolean(process.env.OPENAI_API_KEY),
+  modelConfigured=Boolean(readOpenAiApiKey()),
 }={}) {
   async function answer({phone,batch}) {
     const raw=batch.map(e=>e.body??e.text??"").join("\n").slice(-3000);
@@ -152,6 +156,52 @@ export function createCedipiClinicalAssistant({
         }
         const date=typeof session.selected_day==="string"?
           session.selected_day.slice(0,10):new Date(session.selected_day).toISOString().slice(0,10);
+        if (nativeEnabled) {
+          let reservation;
+          try {
+            reservation = await nativeBooking({
+              phone,exam:current,date,start:session.selected_start,
+              doctor:session.selected_doctor_name,patientName:session.patient_name,
+            });
+          } catch(error) {
+            if (error instanceof NativeCalendarError) {
+              await repo.saveLaraSession(phone,{state:"awaiting_date",exam_code:current.code});
+              return reply("Esse horário não está mais disponível na agenda da CEDIPI. "
+                + "Informe outra data para consultar novas opções.");
+            }
+            throw error;
+          }
+          await repo.saveLaraSession(phone,{state:"idle"});
+          const info=current.name+" com Dr. "+reservation.doctor+" às "
+            +formatSlot({start:reservation.start,doctor:reservation.doctor})
+              .split(" (")[0]+".";
+          if(reservation.status==="confirmed") {
+            return reply("✅ Agendamento confirmado na agenda CEDIPI: *"+info+"* "
+              +"Guarde esta mensagem de confirmação.");
+          }
+          if(reservation.status==="awaiting_medical_approval") {
+            return reply("Pré-reserva registrada na agenda CEDIPI para *"+info+"* "
+              +"A confirmação depende de aprovação médica. A recepção dará continuidade "
+              +"e orientará sobre o pagamento, quando aplicável.","medical_approval");
+          }
+          // The payment key is only disclosed AFTER the native database has
+          // atomically reserved the chosen, confirmed-by-patient slot.
+          const paymentDocument=await repo.readOfficialDocument(5);
+          const pixKey=paymentDocument?.match(/(?:CPF:\s*|CPF\s*:?\s*)(\d{3}\.\d{3}\.\d{3}-\d{2})/i)?.[1];
+          const holder=paymentDocument?.match(/Nome:\s*([^\n]+)/i)?.[1]?.trim();
+          if(!pixKey || !holder) {
+            return reply("Pré-reserva registrada na agenda CEDIPI para *"+info+"* "
+              +"Para concluir a confirmação, a recepção informará a taxa de 20% "
+              +"e os dados Pix oficiais após conferência.","payment_review");
+          }
+          return reply("✅ Pré-reserva registrada na agenda CEDIPI: *"+info+"* "
+            +"Para confirmar, efetue o adiantamento de *"
+            +fmtPrice(reservation.depositCents)+"*, abatido do valor final.\n"
+            +"Chave Pix (CPF): *"+pixKey+"*\nTitular: *"+holder+"*\n"
+            +"Envie o comprovante. A recepção irá verificar o pagamento; "
+            +"até essa validação, o exame permanece pré-reservado, sem confirmação final.",
+            "payment_review");
+        }
         await repo.createBookingRequest({
           phone,exam:current,date,start:session.selected_start,
           doctor:session.selected_doctor_name,patientName:session.patient_name,

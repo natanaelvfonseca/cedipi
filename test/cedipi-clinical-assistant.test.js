@@ -149,3 +149,70 @@ test("free-form nonclinical questions may use grounded OpenAI fallback only with
    phone:"5511999999999",batch:[{body:"Vocês têm estacionamento coberto?"}],
  }),null);
 });
+
+test("native calendar confirms below R$400 and collects Pix only after paid slot reservation",async()=>{
+ const {ask,requests}=testAssistant();
+ // The existing injected catalog still runs in conservative legacy test mode.
+ const sessions=new Map();
+ const docs=[];
+ const assistant=createCedipiClinicalAssistant({
+   now:()=>knownDate,nativeEnabled:true,
+   repo:{
+     listOfficialExams:async()=>all,
+     readLaraSession:async(phone)=>sessions.get(phone)??{phone,state:"idle"},
+     saveLaraSession:async(phone,state)=>{sessions.set(phone,state);return state},
+     listProposedExamTimes:async()=>[
+       {doctor:"Danilo",start:"2026-11-17T12:00:00.000Z",end:"2026-11-17T12:15:00.000Z"},
+     ],
+     readOfficialDocument:async()=>null,
+     createBookingRequest:async()=>{throw Error("legacy fallback forbidden");},
+   },
+   nativeBooking:async input=>{
+     docs.push(input);
+     return {status:"confirmed",doctor:"Danilo",start:input.start,
+       depositCents:0};
+   },
+ });
+ const tell=async q=>assistant.answer({phone:"5511999999999",batch:[{body:q}]});
+ await tell("Quero agendar ultrassom de tireoide");
+ await tell("17/11/2026");
+ await tell("1");
+ await tell("Maria Silva");
+ const result=await tell("sim");
+ assert.match(result.text,/Agendamento confirmado na agenda CEDIPI/);
+ assert.equal(result.handoffReason,null);
+ assert.equal(docs.length,1);
+ assert.equal(requests.length,0);
+});
+
+test("native payment reservation never exposes a Pix key before slot confirmation",async()=>{
+ const sessions=new Map();
+ const order=[];
+ const assistant=createCedipiClinicalAssistant({
+   now:()=>knownDate,nativeEnabled:true,
+   repo:{
+     listOfficialExams:async()=>all,
+     readLaraSession:async phone=>sessions.get(phone)??{phone,state:"idle"},
+     saveLaraSession:async(phone,state)=>{sessions.set(phone,state);return state},
+     listProposedExamTimes:async()=>[
+       {doctor:"Danilo",start:"2026-11-17T12:00:00.000Z",end:"2026-11-17T12:40:00.000Z"},
+     ],
+     readOfficialDocument:async()=>null,
+   },
+   nativeBooking:async input=>{
+     order.push("reserved");
+     return {status:"awaiting_payment_proof",doctor:"Danilo",
+       start:input.start,depositCents:9000};
+   },
+ });
+ const ask=async q=>assistant.answer({phone:"5511999999999",batch:[{body:q}]});
+ await ask("Quero agendar ultrassom obstétrico morfológico 2º trimestre");
+ await ask("17/11/2026");
+ await ask("1");
+ await ask("Maria Silva");
+ const result=await ask("sim");
+ assert.equal(order[0],"reserved");
+ assert.match(result.text,/Pré-reserva/);
+ assert.equal(result.handoffReason,"payment_review");
+ assert.doesNotMatch(result.text,/\d{3}\.\d{3}\.\d{3}-\d{2}/);
+});

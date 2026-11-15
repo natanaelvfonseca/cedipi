@@ -1,4 +1,5 @@
 import { getDatabasePool } from "./database.js";
+import { expireNativeHolds } from "./native-calendar.js";
 
 const timezone = "America/Sao_Paulo";
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -58,7 +59,10 @@ export async function listProposedExamTimes({ exam, date, doctorName, limit = 3 
   pool = getDatabasePool()) {
   if (!datePattern.test(date) || !exam?.duration_minutes ||
       !Array.isArray(exam.doctor_names) || !exam.doctor_names.length) return [];
-  // The local schedule is not a verified external Google Calendar reservation.
+  if (process.env.CEDIPI_APPOINTMENTS_BACKEND === "native") {
+    await expireNativeHolds(pool);
+  }
+  // Read the one authoritative internal CEDIPI calendar.
   const sql = [
     "WITH proposed AS (",
     " SELECT d.id AS doctor_id,d.name AS doctor_name,",
@@ -98,7 +102,8 @@ export async function listProposedExamTimes({ exam, date, doctorName, limit = 3 
     timezone,doctorName??null,Math.min(5,Math.max(1,limit))]);
   return result.rows.map(row=>({
     doctor:row.doctor_name,start:row.starts_at.toISOString(),
-    end:row.ends_at.toISOString(),verified:false,
+    end:row.ends_at.toISOString(),
+    verified:process.env.CEDIPI_APPOINTMENTS_BACKEND === "native",
   }));
 }
 
@@ -124,7 +129,7 @@ export async function listPendingBookingRequests(pool = getDatabasePool()) {
   const result=await pool.query(
     "SELECT r.id,r.phone,r.exam_code,e.name AS exam_name,"
     + "r.preferred_date,r.preferred_start,r.doctor_name,r.patient_name,"
-    + "r.status,r.created_at FROM lara_booking_requests r"
+    + "r.status,r.appointment_id,r.created_at FROM lara_booking_requests r"
     + " JOIN cedipi_exam_catalog e ON e.code=r.exam_code"
     + " WHERE r.status IN ('needs_verification','awaiting_medical_approval',"
     + "'awaiting_payment_proof') ORDER BY r.created_at ASC LIMIT 100;"
