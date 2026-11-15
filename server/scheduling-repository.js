@@ -1,5 +1,6 @@
 import { getDatabasePool } from "./database.js";
 import { businessTimezone, materializeScheduleSlots } from "./schedule-slots-repository.js";
+import { expireNativeHolds } from "./native-calendar.js";
 
 export { businessTimezone };
 
@@ -20,6 +21,9 @@ export async function listDoctors() {
 
 export async function listAvailability({ date, doctor }) {
   const pool = getDatabasePool();
+  if (process.env.CEDIPI_APPOINTMENTS_BACKEND==="native") {
+    await expireNativeHolds(pool);
+  }
   const client = await pool.connect();
   const parameters = [date, businessTimezone];
   let doctorFilter = "";

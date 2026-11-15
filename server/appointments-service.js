@@ -1,5 +1,6 @@
 import {
   confirmAppointment,
+  confirmNativeAppointment,
   failAppointment,
   reservePendingAppointment,
   AppointmentReservationError,
@@ -42,6 +43,7 @@ function publicAppointment(appointment, externalTimes = {}) {
 export function createAppointmentsService({
   reserve = reservePendingAppointment,
   confirm = confirmAppointment,
+  confirmNative = confirmNativeAppointment,
   fail = failAppointment,
   schedule = scheduleAppointment,
 } = {}) {
@@ -100,13 +102,15 @@ export function createAppointmentsService({
     }
 
     const useExternalTimes = external.start && external.end;
-    const confirmed = await confirm({
+    const confirmed = await (process.env.CEDIPI_APPOINTMENTS_BACKEND==="native"
+      ? confirmNative({appointmentId:pending.id})
+      : confirm({
       appointmentId: pending.id,
       googleEventId: external.googleEventId,
       googleCalendarId: external.googleCalendarId,
       startsAt: useExternalTimes ? external.start : null,
       endsAt: useExternalTimes ? external.end : null,
-    });
+    }));
     if (!confirmed) {
       throw new AppointmentError("appointment_confirmation_failed", 500);
     }

@@ -49,6 +49,11 @@ jobs:
         run: node --test test/lara-postgres.test.js
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+      - name: Native calendar PostgreSQL concurrency and approval test
+        run: node --test test/native-calendar-postgres.test.js
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
+          CEDIPI_APPOINTMENTS_BACKEND: native
       - name: Prepare isolated Docker homologation configuration
         run: |
           printf '%s\n' \

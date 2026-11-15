@@ -11,9 +11,11 @@ type Exam = { code: string; name: string; price_cents: number;
   preparation: string | null; notes: string | null };
 type Readiness = { officialDocuments: number; officialExams: number;
   schedulesConfigured: number; openaiConfigured: boolean;
-  googleCalendarConfigured: boolean; bookingAutoConfirmationAvailable: boolean;
+  googleCalendarConfigured: boolean; nativeCalendarConfigured?: boolean;
+  bookingAutoConfirmationAvailable: boolean;
   whatsappTestMode: boolean; nativeCutover: boolean; status: string };
 type BookingRequest = { id: string; phone: string; exam_name: string;
+  appointment_id?: string | null;
   preferred_date: string | null; preferred_start: string | null;
   doctor_name: string | null; patient_name: string | null;
   status: string; created_at: string };
@@ -134,6 +136,28 @@ export function LaraManagement({
     } finally {setLoadingDoc(false);}
   }
 
+  async function updateBooking(item:BookingRequest,
+    action:"approve_medical"|"verify_payment"|"cancel") {
+    if (saving) return;
+    const details={
+      approve_medical:"Aprovar clinicamente o procedimento",
+      verify_payment:"Confirmar que o comprovante foi conferido e o pagamento recebido",
+      cancel:"Cancelar a reserva na agenda",
+    };
+    if (!window.confirm(details[action]+"?\n"+item.exam_name+" — "+(item.patient_name??"Paciente"))) return;
+    setSaving(true);setError(null);
+    try {
+      await requestApi("/api/lara/booking-requests/"+encodeURIComponent(item.id)+"/action",{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({action}),
+      });
+      notify("Atualização registrada na agenda da CEDIPI.","success");
+      await refresh();
+    } catch {
+      setError("Não foi possível atualizar a reserva. Verifique disponibilidade e regras de aprovação.");
+    } finally {setSaving(false);}
+  }
+
   async function closeHandoff(item: Handoff) {
     if (saving) return;
     setSaving(true); setError(null);
@@ -165,9 +189,11 @@ export function LaraManagement({
       <p className="lara-admin-note">
         {readiness.officialDocuments}/6 documentos importados · {readiness.officialExams}/47 exames · {readiness.schedulesConfigured}/3 médicos cadastrados.
         {" "}OpenAI: {readiness.openaiConfigured ? "configurada" : "credencial pendente"}.
-        {" "}Google Agenda: {readiness.googleCalendarConfigured ? "credencial configurada" : "credencial pendente"}.
+        {" "}Agenda: {readiness.nativeCalendarConfigured ? "própria da CEDIPI (PostgreSQL)" : "configuração pendente"}.
         {" "}Atendimento: {readiness.nativeCutover ? "Lara nativa" : readiness.whatsappTestMode ? "teste de WhatsApp limitado" : "webhook anterior"}.
-        {" "}Confirmação automática de agendamentos: não habilitada enquanto não houver validação da agenda externa.
+        {" "}Agendamento: {readiness.nativeCalendarConfigured
+          ? "reserva nativa com verificação de disponibilidade e regras de aprovação/pagamento"
+          : "não habilitado"}.
       </p>
     </div> : null}
     <div className="lara-admin-tabs" role="tablist" aria-label="Gestão da Lara">
@@ -240,8 +266,21 @@ export function LaraManagement({
                     ? dateFormat.format(new Date(item.preferred_start)) : "Data a confirmar"}
                     {item.doctor_name ? " · Dr. " + item.doctor_name : ""}</small>
                   <small>{item.status === "awaiting_medical_approval"
-                    ? "Aguardando aprovação médica e confirmação da agenda"
-                    : "Aguardando verificação de disponibilidade pela recepção"}</small>
+                    ? "Pré-reserva: aguardando aprovação médica"
+                    : item.status==="awaiting_payment_proof"
+                      ? "Pré-reserva: aguardando conferência de pagamento"
+                      : "Aguardando verificação pela recepção"}</small>
+                </span>
+                <span style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {item.appointment_id && item.status==="awaiting_medical_approval"?
+                    <button className="button button-secondary" disabled={saving}
+                      onClick={()=>void updateBooking(item,"approve_medical")}>Aprovar procedimento</button> : null}
+                  {item.appointment_id && item.status==="awaiting_payment_proof"?
+                    <button className="button button-secondary" disabled={saving}
+                      onClick={()=>void updateBooking(item,"verify_payment")}>Validar pagamento</button> : null}
+                  {item.appointment_id?
+                    <button className="button button-secondary" disabled={saving}
+                      onClick={()=>void updateBooking(item,"cancel")}>Cancelar pré-reserva</button> : null}
                 </span>
               </div>
             ))}</div>}

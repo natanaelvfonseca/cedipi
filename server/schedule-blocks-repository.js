@@ -64,7 +64,7 @@ export async function createScheduleBlocks({ doctorId, date, times, slotIds, rea
   try {
     await client.query("BEGIN;");
     const doctorResult = await client.query(
-      "SELECT id, name, active FROM doctors WHERE id = $1;",
+      "SELECT id, name, active FROM doctors WHERE id = $1 FOR UPDATE;",
       [doctorId],
     );
     const doctor = doctorResult.rows[0];

@@ -8,6 +8,7 @@ import {
   createListBookingRequestsHandler,
   createLaraReadinessHandler,
   createReadOfficialDocumentHandler,
+  createNativeBookingActionHandler,
 } from "./cedipi-clinic-handlers.js";
 import {
   createListLaraKnowledgeHandler,
@@ -27,6 +28,7 @@ import {
   createListDoctorsHandler,
 } from "./scheduling-handlers.js";
 import { createLiveAvailabilityHandler } from "./n8n-agenda-handlers.js";
+import { createNativeLiveAvailabilityHandler } from "./native-availability-handler.js";
 import { createPostAppointmentHandler } from "./appointments-handlers.js";
 import {
   createDeleteScheduleBlocksHandler,
@@ -104,6 +106,8 @@ export function createApp({
   app.get("/api/lara/readiness", requireAdmin, createLaraReadinessHandler());
   app.get("/api/lara/catalog", requireAdmin, createListOfficialCatalogHandler());
   app.get("/api/lara/booking-requests", requireAdmin, createListBookingRequestsHandler());
+  app.post("/api/lara/booking-requests/:id/action", requireAdmin,
+    createNativeBookingActionHandler());
   app.get("/api/lara/official-documents/:number", requireAdmin,
     createReadOfficialDocumentHandler());
   app.get("/api/lara/knowledge", requireAdmin, createListLaraKnowledgeHandler());
@@ -122,7 +126,9 @@ export function createApp({
   app.patch("/api/whatsapp/conversations/:phone/ai-control", createPatchConversationAiControlHandler());
   app.get("/api/doctors", createListDoctorsHandler());
   app.get("/api/scheduling/availability", createListAvailabilityHandler(availabilityReader));
-  app.get("/api/scheduling/live-availability", createLiveAvailabilityHandler());
+  app.get("/api/scheduling/live-availability",
+    process.env.CEDIPI_APPOINTMENTS_BACKEND==="native"
+      ?createNativeLiveAvailabilityHandler():createLiveAvailabilityHandler());
   app.get("/api/scheduling/blocks", createListScheduleBlocksHandler());
   app.post("/api/scheduling/blocks", createPostScheduleBlocksHandler());
   app.delete("/api/scheduling/blocks", createDeleteScheduleBlocksHandler());
