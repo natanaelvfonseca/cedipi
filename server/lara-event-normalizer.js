@@ -24,14 +24,16 @@ export function normalizeEvolutionMessage(payload, expectedInstance = "Cedipi") 
       : null);
   if (!identity) return null; // Reject unresolvable LIDs and non-individuals.
   const message = data.message?.ephemeralMessage?.message ?? data.message ?? {};
-  const content = message.conversation ?? message.extendedTextMessage?.text
-    ?? (message.imageMessage ? "Imagem recebida (requer conferência humana)"
-      : message.documentMessage ? "Documento recebido (requer conferência humana)"
-      : message.audioMessage ? "Áudio recebido (requer atendimento humano)"
-      : null);
+  const mediaKind = message.imageMessage ? "image"
+    : message.documentMessage || message.documentWithCaptionMessage ? "document"
+    : message.audioMessage ? "audio" : null;
+  const content = mediaKind==="image" ? "Imagem recebida (requer conferência humana)"
+    : mediaKind==="document" ? "Documento recebido (requer conferência humana)"
+    : mediaKind==="audio" ? "Áudio recebido (requer atendimento humano)"
+    : message.conversation ?? message.extendedTextMessage?.text ?? null;
   if (typeof content !== "string") return null;
   const text = content.trim();
   if (!text || text.length > MAX_TEXT_LENGTH) return null;
   return { instance, messageId: rawId, remoteJid: identity.remoteJid,
-    phone: identity.phone, text };
+    phone: identity.phone, text, sourceJid: primaryJid, mediaKind };
 }

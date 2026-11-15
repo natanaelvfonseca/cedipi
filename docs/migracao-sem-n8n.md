@@ -301,3 +301,36 @@ frontend. Em Docker Swarm, montar um Docker secret com target
 cedipi_openai_api_key, lido em /run/secrets/cedipi_openai_api_key.
 O modulo openai-credentials suporta tambem OPENAI_API_KEY_FILE.
 Trocar a chave apos uso inicial porque ela foi publicada em uma conversa.
+
+## Leitura de imagens e PDFs no WhatsApp (migration 011)
+
+A recepcao pode abrir a tela Conversas e usar **Ler com Lara IA** em
+imagens e documentos. O backend pega o arquivo da Evolution **Cedipi**,
+valida o tipo real pelos bytes (JPEG, PNG, WebP e PDF) e os tamanhos
+ate 8 MiB/imagem ou 12 MiB/PDF. O endpoint de analise e autenticado;
+nao existe upload publico ou download externo sem autenticar o operador.
+
+O documento e enviado por canal TLS a OpenAI Responses com
+store:false. Imagens usam input_image, PDF usa input_file, incluindo
+PDFs digitalizados (a depender da qualidade). A IA so classifica documentos
+administrativamente e extrai nomes de exames legiveis. Ela nao confirma
+pagamento, assinatura, diagnostico, autenticidade, preparos especiais
+nem adiantamentos; essas decisoes permanecem com a recepcao.
+
+Os arquivos originais ficam na Evolution; o PostgreSQL salva somente
+resultado administrativo resumido, nunca base64 ou binario. O sistema
+remove analises com mais de 30 dias nas novas gravacoes. A rota de
+analise obedece ao telefone e ID de mensagem do usuario autenticado,
+e a fila usa o JID original apenas apos validar a correspondencia
+da Evolution para mensagens @lid.
+
+No WhatsApp, em LARA_MEDIA_ANALYSIS_ENABLED=true, a Lara identifica
+um pedido de exame e pergunta ao paciente se quer agendar, exigindo
+confirmacao textual do nome do exame. Comprovante de pagamento e arquivo
+ilegiveis recebem protocolo de atendimento humano. Audios continuam
+com atendimento humano, pois nao fazem parte desta entrega.
+
+Antes de ativar para todo o publico, conferir bases legais, transparencia
+e governanca da LGPD para dados sensiveis de saude, com a clinica.
+Manter o webhook global no n8n e o teste nativo restrito a um unico
+numero ate o corte completo e aprovado.

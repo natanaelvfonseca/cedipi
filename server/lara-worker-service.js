@@ -2,6 +2,7 @@ import { createEvolutionClient } from "./evolution-client.js";
 import { canLaraReply, setConversationAiEnabled } from "./ai-conversation-control-repository.js";
 import { createLaraModel, composeLaraReply } from "./lara-response.js";
 import { createCedipiClinicalAssistant } from "./cedipi-clinical-assistant.js";
+import { createLaraMediaService,replyForMediaAnalysis } from "./lara-media-service.js";
 import * as repository from "./lara-inbox-repository.js";
 
 function publicStatus(status) {
@@ -22,6 +23,8 @@ export function createLaraWorker({
   setEnabled = setConversationAiEnabled,
   model = createLaraModel(),
   clinicalAssistant = createCedipiClinicalAssistant(),
+  mediaService = createLaraMediaService(),
+  mediaEnabled = process.env.LARA_MEDIA_ANALYSIS_ENABLED === "true",
   evolutionFactory = createEvolutionClient,
 } = {}) {
   async function runOnce() {
@@ -56,21 +59,45 @@ export function createLaraWorker({
         return publicStatus("paused");
       }
 
-      const clinical = await clinicalAssistant.answer({ phone: job.phone, batch });
       let reply;
-      if (clinical) {
-        reply = clinical;
-        if (clinical.handoffReason) {
-          await repo.createLaraHandoff(job.phone, clinical.handoffReason);
+      const mediaBatch=batch.filter(item=>item.media_kind);
+      if(mediaBatch.length) {
+        const first=mediaBatch[0];
+        if(first.media_kind==="audio" || !mediaEnabled || mediaBatch.length>2) {
+          reply={text:"Recebi o arquivo. Vou encaminhá-lo à recepção para conferência.",
+            handoffReason:"media_review"};
+        } else {
+          try {
+            const result=await mediaService.process({
+              instance:"Cedipi",phone:job.phone,
+              messageId:first.message_id,
+              sourceJid:first.source_jid??first.remote_jid,
+            });
+            reply=replyForMediaAnalysis(result);
+          } catch {
+            // No patient data or API errors are exposed in WhatsApp.
+            reply={text:"Recebi o documento, mas não consegui lê-lo com segurança. "
+              +"Vou encaminhar à recepção para conferência.",
+              handoffReason:"media_review"};
+          }
         }
+        if(reply.handoffReason)await repo.createLaraHandoff(job.phone,reply.handoffReason);
       } else {
-        const text = batch.map((item) => item.body).join("\n").slice(-3000);
-        const history = await repo.latestLaraHistory(job.phone);
-        const sources = await repo.relevantLaraKnowledge(text);
-        reply = await composeLaraReply({
-          batch, history, sources, model,
-          handoff: async (reason) => repo.createLaraHandoff(job.phone, reason),
-        });
+        const clinical = await clinicalAssistant.answer({ phone: job.phone, batch });
+        if (clinical) {
+          reply = clinical;
+          if (clinical.handoffReason) {
+            await repo.createLaraHandoff(job.phone, clinical.handoffReason);
+          }
+        } else {
+          const text = batch.map((item) => item.body).join("\n").slice(-3000);
+          const history = await repo.latestLaraHistory(job.phone);
+          const sources = await repo.relevantLaraKnowledge(text);
+          reply = await composeLaraReply({
+            batch, history, sources, model,
+            handoff: async (reason) => repo.createLaraHandoff(job.phone, reason),
+          });
+        }
       }
 
       // Avoid stale responses when a new text arrives mid-generation.

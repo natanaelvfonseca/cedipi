@@ -32,6 +32,7 @@ function request(body = payload, key = secret) {
 const event = {
   instance: "Cedipi", phone, remoteJid: phone + "@s.whatsapp.net",
   messageId: "ABC-123", text: "Olá, bom dia",
+  sourceJid: phone+"@s.whatsapp.net",mediaKind:null,
 };
 const batch = [{
   id: 1, body: "Gostaria do endereço", message_id: "mid-1",
@@ -392,7 +393,7 @@ test("Evolution @lid inbound resolves only via a valid remoteJidAlt", () => {
     remoteJidAlt: phone + "@s.whatsapp.net",
   }};
   assert.deepEqual(normalizeEvolutionMessage({ ...payload, data }), {
-    ...event, messageId: "LID-1",
+    ...event, messageId: "LID-1",sourceJid:"123456789012345@lid",
   });
   assert.equal(normalizeEvolutionMessage({
     ...payload, data: { ...data, key: { ...data.key, remoteJidAlt: undefined } },

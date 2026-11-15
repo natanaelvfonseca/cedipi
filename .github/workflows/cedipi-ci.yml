@@ -54,6 +54,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
           CEDIPI_APPOINTMENTS_BACKEND: native
+      - name: Patient media intake PostgreSQL test
+        run: node --test test/lara-media-postgres.test.js
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cedipi_core
       - name: Prepare isolated Docker homologation configuration
         run: |
           printf '%s\n' \

@@ -4,6 +4,9 @@ import express from "express";
 import { createDatabaseHealthHandler } from "./database-health.js";
 import { createLaraWebhookHandler } from "./lara-webhook.js";
 import {
+ createGetMediaAnalysisHandler,createAnalyzeMediaHandler,
+} from "./lara-media-handlers.js";
+import {
   createListOfficialCatalogHandler,
   createListBookingRequestsHandler,
   createLaraReadinessHandler,
@@ -121,6 +124,10 @@ export function createApp({
   app.get("/api/whatsapp/conversations", createListWhatsAppConversationsHandler());
   app.get("/api/whatsapp/conversations/:conversationId/messages", createListWhatsAppMessagesHandler());
   app.get("/api/whatsapp/conversations/:conversationId/messages/:messageId/media", createGetWhatsAppMessageMediaHandler());
+  app.get("/api/whatsapp/conversations/:conversationId/messages/:messageId/analysis",
+    createGetMediaAnalysisHandler());
+  app.post("/api/whatsapp/conversations/:conversationId/messages/:messageId/analysis",
+    createAnalyzeMediaHandler());
   app.post("/api/whatsapp/conversations/:conversationId/messages", createSendWhatsAppMessageHandler());
   app.get("/api/whatsapp/conversations/:phone/ai-control", createGetConversationAiControlHandler());
   app.patch("/api/whatsapp/conversations/:phone/ai-control", createPatchConversationAiControlHandler());

@@ -7,15 +7,16 @@ export async function enqueueLaraMessage(message, {
   const boundedDelay = Math.min(20000, Math.max(1000, Number(debounceMs) || 5000));
   const result = await pool.query(
     "WITH incoming AS ("
-    + " INSERT INTO lara_inbound_messages (instance_name,message_id,phone,remote_jid,body)"
-    + " VALUES ($1,$2,$3,$4,$5) ON CONFLICT (instance_name,message_id) DO NOTHING RETURNING phone"
+    + " INSERT INTO lara_inbound_messages (instance_name,message_id,phone,remote_jid,body,source_jid,media_kind)"
+    + " VALUES ($1,$2,$3,$4,$5,$7,$8) ON CONFLICT (instance_name,message_id) DO NOTHING RETURNING phone"
     + ") INSERT INTO lara_conversation_jobs (phone,run_after)"
     + " SELECT phone, NOW() + make_interval(secs => $6::double precision / 1000) FROM incoming"
     + " ON CONFLICT (phone) DO UPDATE SET"
     + " run_after = GREATEST(lara_conversation_jobs.run_after, EXCLUDED.run_after),"
     + " updated_at = NOW() RETURNING phone;",
     [message.instance, message.messageId, message.phone, message.remoteJid,
-      message.text, boundedDelay],
+      message.text, boundedDelay,message.sourceJid??message.remoteJid,
+      message.mediaKind??null],
   );
   return { accepted: result.rowCount > 0, duplicate: result.rowCount === 0 };
 }
@@ -52,7 +53,7 @@ export async function claimLaraBatch(job, pool = getDatabasePool()) {
       "UPDATE lara_inbound_messages SET status='processing', claim_id=$2::uuid,"
       + " attempts=attempts + 1"
       + " WHERE phone=$1 AND status='pending'"
-      + " RETURNING id, body, message_id, remote_jid, attempts, received_at;",
+      + " RETURNING id, body, message_id, remote_jid, source_jid, media_kind, attempts, received_at;",
       [job.phone, job.lease_id],
     );
     await client.query("COMMIT;");
