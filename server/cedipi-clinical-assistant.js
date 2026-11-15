@@ -25,7 +25,12 @@ const ignore=new Set([
   "preco","valor","quanto","custa","saber","qual","quais","exame","fazer",
   "agendar","marcar","agenda","horario","horarios","ultrassom","ultrasom",
   "tenho","sobre","informacoes","informacao","preparo","preparacao",
-  "sua","meu","meus","ola","oi","bom","dia","boa","tarde","noite"
+  "sua","meu","meus","ola","oi","bom","dia","boa","tarde","noite",
+  "duracao","quanto","tempo","demora","demoram","minuto","minutos",
+  "leva","levam","necessario","necessaria","necessarios","necessarias",
+  "onde","pelo","pela","esse","essa","esses","essas","deste","desse",
+  "desse","exames","procedimento","procedimentos","informar","informe",
+  "realizar","realizado","realizada"
 ]);
 const tokens = text => clean(text).split(" ").filter(w=>
   w && !ignore.has(w)
