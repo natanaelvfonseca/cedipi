@@ -30,14 +30,3 @@ export function createGetMediaAnalysisHandler(service=createLaraMediaService()){
    }catch(e){res.status(statusCode(e)).json({ok:false,error:errorCode(e)})}
  };
 }
-export function createAnalyzeMediaHandler(service=createLaraMediaService()){
- return async(req,res)=>{
-   const params=identity(req);
-   if(!params){res.status(400).json({ok:false,error:"invalid_media_identity"});return;}
-   try{
-     const analysis=await service.process(params);
-     res.set("Cache-Control","no-store");
-     res.status(200).json({ok:true,analysis});
-   }catch(e){res.status(statusCode(e)).json({ok:false,error:errorCode(e)})}
- };
-}

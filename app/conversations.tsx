@@ -27,9 +27,6 @@ import {
   getWhatsAppConversations,
   getWhatsAppMessages,
   getWhatsAppMessageMedia,
-  getWhatsAppMediaAnalysis,
-  analyzeWhatsAppMedia,
-  type WhatsAppMediaAnalysis,
   patchConversationAiControl,
   sendWhatsAppMessage,
   type WhatsAppConversation,
@@ -126,42 +123,6 @@ function ImagePreview({ url, caption, close }: { url: string; caption: string | 
   );
 }
 
-function MediaAnalysisAction({conversationId,messageId}:{
- conversationId:string;messageId:string|null;
-}) {
- const [loading,setLoading]=useState(false);
- const [error,setError]=useState(false);
- const [analysis,setAnalysis]=useState<WhatsAppMediaAnalysis|null>(null);
- async function inspect(){
-  if(!messageId||loading)return;
-  setLoading(true);setError(false);
-  try{
-    const saved=await getWhatsAppMediaAnalysis(conversationId,messageId);
-    const result=saved?.status==="done"
-      ?saved:await analyzeWhatsAppMedia(conversationId,messageId);
-    setAnalysis(result);
-  }catch{setError(true);}
-  finally{setLoading(false);}
- }
- return <div className="message-media-ai" style={{marginTop:8}}>
-  <button type="button" disabled={!messageId||loading}
-    onClick={()=>void inspect()} aria-label="Ler anexo com inteligência artificial">
-    {loading?"Lendo arquivo...":analysis?"Atualizar análise":"Ler com Lara IA"}
-  </button>
-  {error?<p className="media-error">Não foi possível analisar este arquivo. Confira o original ou encaminhe à recepção.</p>:null}
-  {analysis?<div style={{marginTop:8,padding:10,borderRadius:8,
-    background:"var(--surface-secondary, rgba(128,128,128,.08))"}}>
-    <strong>Leitura automática — conferir original</strong>
-    <p>{analysis.summary||"Sem informações legíveis"}</p>
-    {analysis.exam_names.length>0?
-      <p>Exames identificados: {analysis.exam_names.join("; ")}</p>:null}
-    <small>{analysis.category==="payment_proof"
-      ?"Comprovante não validado: conferir pagamento na recepção."
-      :analysis.review_required?"Documento sujeito à conferência humana.":""}</small>
-  </div>:null}
- </div>;
-}
-
 function MessageContent({ message, conversationId }: { message: WhatsAppMessage; conversationId: string }) {
   const presentation = messagePresentation(message);
   const Icon = message.type === "audio" ? Mic : message.type === "image" ? ImageIcon : FileText;
@@ -207,7 +168,6 @@ function MessageContent({ message, conversationId }: { message: WhatsAppMessage;
         {unavailable ? <span className="media-fallback"><ImageIcon size={16} />Imagem indisponível</span> : null}
       </div>
       {message.text ? <p className="message-media-caption">{message.text}</p> : null}
-      <MediaAnalysisAction conversationId={conversationId} messageId={message.id}/>
       {previewOpen && media.url ? <ImagePreview url={media.url} caption={message.text} close={() => setPreviewOpen(false)} /> : null}
     </>;
   }
@@ -232,7 +192,6 @@ function MessageContent({ message, conversationId }: { message: WhatsAppMessage;
           {media.state === "loading" ? "Carregando documento..." : media.state === "error" ? "Tentar novamente" : "Abrir documento"}
         </button>}
       {unavailable ? <span className="media-error">Documento indisponível</span> : null}
-      <MediaAnalysisAction conversationId={conversationId} messageId={message.id}/>
     </div>;
   }
 

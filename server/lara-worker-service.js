@@ -62,22 +62,53 @@ export function createLaraWorker({
       let reply;
       const mediaBatch=batch.filter(item=>item.media_kind);
       if(mediaBatch.length) {
-        const first=mediaBatch[0];
-        if(first.media_kind==="audio" || !mediaEnabled || mediaBatch.length>2) {
-          reply={text:"Recebi o arquivo. Vou encaminhá-lo à recepção para conferência.",
+        // Process WhatsApp attachments automatically, within the same durable
+        // conversation job and the same contact allowlist as ordinary text.
+        // Multiple photographed pages may arrive as one debounced batch.
+        if(!mediaEnabled || mediaBatch.some(x=>x.media_kind==="audio") ||
+          mediaBatch.length>4) {
+          reply={text:"Recebi os arquivos. Vou encaminhá-los à recepção para conferência.",
             handoffReason:"media_review"};
         } else {
           try {
-            const result=await mediaService.process({
-              instance:"Cedipi",phone:job.phone,
-              messageId:first.message_id,
-              sourceJid:first.source_jid??first.remote_jid,
-            });
-            reply=replyForMediaAnalysis(result);
+            // A lease lasts 180 seconds; process pages in parallel to avoid
+            // exceeding it on multi-page prescriptions (each LLM call 65s max).
+            const analyses=await Promise.all(mediaBatch.map(item=>
+              mediaService.process({
+                instance:"Cedipi",phone:job.phone,
+                messageId:item.message_id,
+                sourceJid:item.source_jid??item.remote_jid,
+              })
+            ));
+            if(analyses.some(x=>x.category==="payment_proof")) {
+              reply=replyForMediaAnalysis(analyses.find(x=>x.category==="payment_proof"));
+            } else if(analyses.every(x=>x.status==="done"&&x.readable===true&&
+              x.category==="medical_order") &&
+              analyses.some(x=>x.exam_names?.length>0) &&
+              typeof clinicalAssistant.handleMedicalOrder==="function") {
+              reply=await clinicalAssistant.handleMedicalOrder({
+                phone:job.phone,
+                examNames:analyses.flatMap(x=>x.exam_names??[]),
+              });
+              // If the patient included a date as a separate message after
+              // the attachment, advance the same conversation immediately.
+              const laterText=batch.filter(x=>!x.media_kind&&
+                (x.id??0)>(mediaBatch.at(-1)?.id??0));
+              if(laterText.length && !reply.handoffReason &&
+                typeof clinicalAssistant.answer==="function") {
+                const advanced=await clinicalAssistant.answer({
+                  phone:job.phone,batch:laterText,
+                });
+                if(advanced)reply=advanced;
+              }
+            } else {
+              reply=replyForMediaAnalysis(analyses.find(x=>
+                x.category!=="medical_order")??analyses[0]);
+            }
           } catch {
-            // No patient data or API errors are exposed in WhatsApp.
-            reply={text:"Recebi o documento, mas não consegui lê-lo com segurança. "
-              +"Vou encaminhar à recepção para conferência.",
+            // Never invent the contents of a prescription or a confirmation.
+            reply={text:"Recebi seu arquivo, mas não consegui interpretá-lo "
+              +"com segurança. Vou encaminhar à recepção para conferência.",
               handoffReason:"media_review"};
           }
         }
